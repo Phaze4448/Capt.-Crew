@@ -112,21 +112,46 @@ async def get_or_create_profile(user_id: int) -> dict:
     return profile
 
 
-@bot.tree.command(name="start_battle", description="Initialize an official competitive crew battle.")
+@bot.tree.command(name="start_battle", description="Initialize an official competitive crew battle in a brand new dedicated text channel.")
 async def start_battle(interaction: discord.Interaction, opponent_crew: str):
     user_id = interaction.user.id
+    guild = interaction.guild
     crew_a_data = await bot.db.crews.find_one({"leaders": user_id})
     crew_b_data = await bot.db.crews.find_one({"name": {"$regex": f"^{opponent_crew}$", "$options": "i"}})
+    
     if not crew_a_data or not crew_b_data:
-        await interaction.response.send_message("❌ Error: Verification failed.", ephemeral=True)
+        await interaction.response.send_message("❌ Error: Verification failed. Confirm crew leader properties or target name arrays.", ephemeral=True)
         return
-    battle = ActiveBattle(
-        channel_id=interaction.channel_id, crew_a=crew_a_data["name"], crew_b=crew_b_data["name"],
-        roster_a=crew_a_data["members"], roster_b=crew_b_data["members"], current_player_a=crew_a_data["members"], current_player_b=crew_b_data["members"],
-        total_stocks_a=len(crew_a_data["members"])*3, total_stocks_b=len(crew_b_data["members"])*3, current_striker=user_id, start_time=time.time()
+
+    await interaction.response.defer()
+
+    # 🏢 1. CREATE A SEPARATE TEXT CHANNEL FOR THE BATTLE
+    channel_name = f"⚔️-{crew_a_data['name']}-vs-{crew_b_data['name']}".lower().replace(" ", "-")
+    battle_channel = await guild.create_text_channel(
+        name=channel_name,
+        category=interaction.channel.category, # Places it right in the same folder category
+        topic=f"Official 3 Stock Strike Match Hub: {crew_a_data['name']} vs {crew_b_data['name']}"
     )
+
+    battle = ActiveBattle(
+        channel_id=battle_channel.id, # Anchor tracking data to the new channel ID
+        crew_a=crew_a_data["name"], crew_b=crew_b_data["name"],
+        roster_a=crew_a_data["members"], roster_b=crew_b_data["members"], 
+        current_player_a=crew_a_data["members"], current_player_b=crew_b_data["members"],
+        total_stocks_a=len(crew_a_data["members"])*3, total_stocks_b=len(crew_b_data["members"])*3, 
+        current_striker=user_id, start_time=time.time()
+    )
+    
     await bot.db.active_battles.insert_one(battle.model_dump())
-    await interaction.response.send_message(f"⚔️ **Official Match Started:** {battle.crew_a} vs {battle.crew_b}!")
+    await interaction.followup.send(f"✅ **Match Channel Formed!** Proceed to <#{battle_channel.id}> to conduct your battle routines.")
+    
+    # Send opening layout embed straight to the new text channel
+    embed = discord.Embed(title="⚔️ 3 Stock Strike Arena Arena Online ⚔️", color=discord.Color.red())
+    embed.description = f"Welcome to the official battlefield channel for **{battle.crew_a}** and **{battle.crew_b}**!"
+    embed.add_field(name=battle.crew_a, value=f"Active Fighter: <@{battle.current_player_a}> (3★)", inline=True)
+    embed.add_field(name=battle.crew_b, value=f"Active Fighter: <@{battle.current_player_b}> (3★)", inline=True)
+    await battle_channel.send(embed=embed)
+
 
 @bot.tree.command(name="mock", description="Instantly launch a casual practice mock match environment.")
 async def mock(interaction: discord.Interaction, team_a: str, team_b: str):
@@ -242,9 +267,29 @@ async def demote(interaction: discord.Interaction, member: discord.Member):
     await interaction.response.send_message(f"🔽 Permissions Revoked: Reverted <@{member.id}> back to baseline competitor classification rows.")
 
 
-@bot.tree.command(name="challenge", description="Issue a formal match ultimatum token request to another squad registry.")
+@bot.tree.command(name="challenge", description="Issue a formal match challenge that opens a new tracking thread.")
 async def challenge(interaction: discord.Interaction, target_crew: str):
-    await interaction.response.send_message(f"⚔️ **Challenge Token Dispatched:** Formal match request queued tracking against squad **{target_crew}**.")
+    user_id = interaction.user.id
+    caller_crew = await bot.db.crews.find_one({"members": user_id})
+    
+    if not caller_crew:
+        await interaction.response.send_message("❌ Error: You must be a registered member of a crew to issue an official challenge.", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+
+    # 🧵 2. CREATE A DYNAMIC THREAD CONTEXT BLOCK FOR CHALLENGE SCHEDULING
+    thread_title = f"Challenge: {caller_crew['name']} v {target_crew}"
+    challenge_thread = await interaction.channel.create_thread(
+        name=thread_title,
+        auto_archive_duration=1440, # Keeps it alive for 24 hours of chatter
+        type=discord.ChannelType.public_thread
+    )
+
+    await interaction.followup.send(f"✉️ **Challenge Dispatched!** Schedulers and captains, head to the thread at <#{challenge_thread.id}> to lock down match details.")
+    await challenge_thread.send(f"⚠️ **Match Ultimatum Issued:** Squad **{caller_crew['name']}** has thrown down the gauntlet against organization **{target_crew}**! Awaiting formal response token verification loops.")
+
+
 
 @bot.tree.command(name="denychallenge", description="Formally deny or wave off an incoming crew battle matching invitation matrix.")
 async def denychallenge(interaction: discord.Interaction, attacking_crew: str):
@@ -344,16 +389,51 @@ async def setcrewlogo(interaction: discord.Interaction, logo_url: str):
 async def substitute(interaction: discord.Interaction, player_out: discord.Member, player_in: discord.Member):
     await interaction.response.send_message(f"🔄 **Roster Substitution Logged:** Pulling out <@{player_out.id}> and path routing <@{player_in.id}> into live arena loops.")
 
-@bot.tree.command(name="create_crew", description="Register a brand new crew identity row folder into the database collection.")
+@bot.tree.command(name="create_crew", description="Register a brand new crew and initialize their locked private headquarters thread.")
 async def create_crew(interaction: discord.Interaction, name: str):
     user_id = interaction.user.id
     in_crew = await bot.db.crews.find_one({"members": user_id})
+    
     if in_crew:
-        await interaction.response.send_message("❌ Error: Already registered on a team.", ephemeral=True)
+        await interaction.response.send_message("❌ Error: You are already registered to an active crew team roster loop.", ephemeral=True)
         return
+        
+    name_exists = await bot.db.crews.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
+    if name_exists:
+        await interaction.response.send_message("❌ Error: That crew organization name is already cataloged.", ephemeral=True)
+        return
+
+    # Defer response to buy time for private channel creation sweeps
+    await interaction.response.defer()
+
+    # 🔒 DYNAMIC PRIVATE THREAD GENERATION LOGIC
+    # Private threads completely hide the huddle space from anyone not explicitly added
+    crew_thread_title = f"🔒┃{name}-headquarters"
+    personal_thread = await interaction.channel.create_thread(
+        name=crew_thread_title,
+        auto_archive_duration=4320, # Keeps it open for multiple days of roster strategy chatter
+        type=discord.ChannelType.private_thread,
+        reason=f"Locked 3 Stock Strike Private Headquarters Instance Framework Initialization."
+    )
+
+    # Save data arrays cleanly into MongoDB cloud data storage models
     new_crew = CrewModel(name=name, owner_id=user_id, leaders=[user_id], members=[user_id])
     await bot.db.crews.insert_one(new_crew.model_dump())
-    await interaction.response.send_message(f"✅ Crew **{name}** has been successfully cataloged!")
+    
+    # Explicitly pull the creator user profile into the newly formed private workspace
+    await personal_thread.add_user(interaction.user)
+    
+    # Send a clean fallback confirmation message onto the main setup channel
+    await interaction.followup.send(f"✅ **Crew Registered!** Your locked private operations thread has been successfully initialized at <#{personal_thread.id}>.")
+    
+    # Send a welcoming guide statement right into the secure bunker room
+    embed = discord.Embed(title=f"👑 Welcome to the {name} Headquarters 👑", color=discord.Color.from_str("#7289DA"))
+    embed.description = (
+        f"This workspace is a **Secure Private Thread** locked away from the public server channel list.\n\n"
+        f"• **Roster Status:** Only <@{user_id}> can access this feed initially.\n"
+        f"• **Recruitment Actions:** Use Discord's built-in **`+ Add to Thread`** link panel button at the top of your screen to pull your roster members in!"
+    )
+    await personal_thread.send(embed=embed)
 
 
 @bot.tree.command(name="force_win", description="Staff Override: Instantly award the active match victory to a specific crew team.")
