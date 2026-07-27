@@ -1,20 +1,13 @@
-import os
 import discord
 from discord import app_commands
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
 from typing import List
+import os
 
-# ==========================================
-# 1. REPLACE THESE VALUES WITH YOUR TOKENS
-# ==========================================
-MONGO_URL = "mongodb+srv://lukepbaker2012_db_user:tLlOmMoK7hW73LUk@cluster0.bm56ezc.mongodb.net/?appName=Cluster0"
+MONGO_URL = os.environ.get("MONGO_URL")
 BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 
-
-# ==========================================
-# 2. DATA MODELS (DATABASE STRUCTURES)
-# ==========================================
 class CrewModel(BaseModel):
     name: str
     owner_id: int
@@ -37,9 +30,6 @@ class ActiveBattle(BaseModel):
     total_stocks_a: int
     total_stocks_b: int
 
-# ==========================================
-# 3. BOT INITIALIZATION ENGINE
-# ==========================================
 class SmashBot(discord.Client):
     def __init__(self):
         intents = discord.Intents.default()
@@ -59,10 +49,9 @@ bot = SmashBot()
 @bot.event
 async def on_ready():
     print(f"Logged in successfully as {bot.user.name}!")
-    print("Database connected. Bot is ready to receive slash commands!")
 
 # ==========================================
-# 4. COMMAND: CREATE A CREW
+# [EXISTING 4 CORE COMMANDS]
 # ==========================================
 @bot.tree.command(name="create_crew", description="Register a brand new crew.")
 async def create_crew(interaction: discord.Interaction, name: str):
@@ -79,9 +68,6 @@ async def create_crew(interaction: discord.Interaction, name: str):
     await bot.db.crews.insert_one(new_crew.model_dump())
     await interaction.response.send_message(f"✅ Success! Crew **{name}** has been officially registered!")
 
-# ==========================================
-# 5. COMMAND: JOIN AN EXISTING CREW
-# ==========================================
 @bot.tree.command(name="join_crew", description="Join an existing crew roster.")
 async def join_crew(interaction: discord.Interaction, crew_name: str):
     user_id = interaction.user.id
@@ -96,9 +82,6 @@ async def join_crew(interaction: discord.Interaction, crew_name: str):
     await bot.db.crews.update_one({"name": target["name"]}, {"$push": {"members": user_id}})
     await interaction.response.send_message(f"🎉 Welcome! You have joined **{target['name']}**!")
 
-# ==========================================
-# 6. COMMAND: START A MATCH
-# ==========================================
 @bot.tree.command(name="start_battle", description="Initialize a crew battle match session.")
 async def start_battle(interaction: discord.Interaction, opponent_crew: str):
     user_id = interaction.user.id
@@ -121,22 +104,19 @@ async def start_battle(interaction: discord.Interaction, opponent_crew: str):
         crew_b=crew_b_data["name"],
         roster_a=roster_a,
         roster_b=roster_b,
-        current_player_a=roster_a,
-        current_player_b=roster_b,
+        current_player_a=roster_a[0],
+        current_player_b=roster_b[0],
         total_stocks_a=len(roster_a) * 3,
         total_stocks_b=len(roster_b) * 3
     )
 
     await bot.db.active_battles.insert_one(battle.model_dump())
     
-    embed = discord.Embed(title="⚔️ Crew Battle Started! ⚔️", color=discord.Color.red())
+    embed = discord.Embed(title="⚔️ 3 Stock Strike: Battle Started! ⚔️", color=discord.Color.red())
     embed.add_field(name=battle.crew_a, value=f"Active: <@{battle.current_player_a}> (3 Stocks)", inline=False)
     embed.add_field(name=battle.crew_b, value=f"Active: <@{battle.current_player_b}> (3 Stocks)", inline=False)
     await interaction.response.send_message(embed=embed)
 
-# ==========================================
-# 7. COMMAND: REPORT GAME RESULTS
-# ==========================================
 @bot.tree.command(name="report_match", description="Log the remaining stocks of the winner.")
 async def report_match(interaction: discord.Interaction, winner_mention: discord.Member, stocks_left: int):
     channel_id = interaction.channel_id
@@ -195,9 +175,51 @@ async def end_battle_session(interaction: discord.Interaction, battle: ActiveBat
     await bot.db.crews.update_one({"name": loser_crew}, {"$inc": {"elo": -elo_change, "losses": 1}})
     await bot.db.active_battles.delete_one({"channel_id": battle.channel_id})
     
-    embed = discord.Embed(title="🏆 Crew Battle Finished! 🏆", color=discord.Color.gold())
-    embed.add_field(name="👑 Ultimate Winner", value=f"**{winner_crew}** (+{elo_change} Elo)")
+    embed = discord.Embed(title="🏆 3 Stock Strike: Crew Battle Finished! 🏆", color=discord.Color.gold())
+    embed.add_field(name="👑 Ultimate Winner", value=f"**{winner_crew}** (+{elo_change} Elo Increase)")
     embed.add_field(name="💀 Defeated Crew", value=f"**{loser_crew}** (-{elo_change} Elo)")
     await interaction.channel.send(embed=embed)
 
-bot.run(BOT_TOKEN)
+# ==========================================
+# [NEW COMMAND 5: SEASONAL LEADERBOARD]
+# ==========================================
+@bot.tree.command(name="leaderboard", description="Display top active crews sorted by competitive Elo standing.")
+async def leaderboard(interaction: discord.Interaction):
+    cursor = bot.db.crews.find().sort("elo", -1).limit(10)
+    crews = await cursor.to_list(length=10)
+    
+    if not crews:
+        await interaction.response.send_message("The leaderboard is currently empty! No crews registered yet.", ephemeral=True)
+        return
+
+    embed = discord.Embed(title="🏆 3 Stock Strike Seasonal Leaderboard 🏆", color=discord.Color.gold())
+    for i, crew in enumerate(crews, 1):
+        embed.add_field(
+            name=f"#{i} - {crew['name']}", 
+            value=f"**Elo Standing:** `{crew['elo']}` | **Record:** {crew['wins']}W - {crew['losses']}L", 
+            inline=False
+        )
+    await interaction.response.send_message(embed=embed)
+
+# ==========================================
+# [NEW COMMAND 6: DISPLAY ACTIVE ROSTER]
+# ==========================================
+@bot.tree.command(name="roster", description="View the complete player roster of a specific crew.")
+async def roster(interaction: discord.Interaction, crew_name: str):
+    crew = await bot.db.crews.find_one({"name": {"$regex": f"^{crew_name}$", "$options": "i"}})
+    if not crew:
+        await interaction.response.send_message("❌ Error: Crew not found.", ephemeral=True)
+        return
+
+    embed = discord.Embed(title=f"📋 {crew['name']} Roster Sheet", color=discord.Color.blue())
+    embed.add_field(name="Owner / General Manager", value=f"<@{crew['owner_id']}>", inline=False)
+    
+    members_text = ""
+    for member_id in crew["members"]:
+        members_text += f"• <@{member_id}>\n"
+        
+    embed.add_field(name="Registered Competitors", value=members_text or "No members listed.", inline=False)
+    embed.set_footer(text=f"Current Elo Rank: {crew['elo']}")
+    await interaction.response.send_message(embed=embed)
+
+# ==========================================
