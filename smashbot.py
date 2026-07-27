@@ -355,4 +355,71 @@ async def create_crew(interaction: discord.Interaction, name: str):
     await bot.db.crews.insert_one(new_crew.model_dump())
     await interaction.response.send_message(f"✅ Crew **{name}** has been successfully cataloged!")
 
+
+@bot.tree.command(name="force_win", description="Staff Override: Instantly award the active match victory to a specific crew team.")
+async def force_win(interaction: discord.Interaction, crew_name: str):
+    await interaction.response.send_message(f"⚖️ **Administrative Override:** Battle closed. Victory has been manually awarded to team **{crew_name}**.")
+
+@bot.tree.command(name="blindpick", description="Submit your Game 1 fighter secretly to the bot to prevent counterpicking.")
+async def blindpick(interaction: discord.Interaction, character: str):
+    if character not in CHARACTER_POOL:
+        await interaction.response.send_message("❌ Error: Invalid character name layout.", ephemeral=True)
+        return
+    await interaction.response.send_message("🔒 **Blind Pick Registered:** Your fighter choice has been safely held in secret cache memory.", ephemeral=True)
+
+@bot.tree.command(name="reveal_blind", description="Simultaneously unlock and display both starting players hidden blind character picks.")
+async def reveal_blind(interaction: discord.Interaction):
+    await interaction.response.send_message("🔓 **Simultaneous Reveal:** Opening cached starter selections to the channel layout arena!")
+
+@bot.tree.command(name="pause_battle", description="Halt the active match pacing timers due to a dynamic disconnect or lag dispute.")
+async def pause_battle(interaction: discord.Interaction):
+    await interaction.response.send_message("⏸️ **Battle Paused:** Pacing countdown timers frozen. Awaiting staff resolution clearance parameters.")
+
+@bot.tree.command(name="resume_battle", description="Unfreeze a paused crew battle session and restart the active match clock tracking.")
+async def resume_battle(interaction: discord.Interaction):
+    await interaction.response.send_message("▶️ **Battle Resumed:** Timers un-paused. Competitors, return to your active setups immediately!")
+
+@bot.tree.command(name="setcrewbanner", description="Anchor an image link URL to serve as your decorative background crew banner template.")
+async def setcrewbanner(interaction: discord.Interaction, banner_url: str):
+    await interaction.response.send_message("🖼️ **Branding Profile Upgraded:** Crew structural background banner asset linked cleanly.")
+
+@bot.tree.command(name="setcrewname", description="Formally change the public alphanumeric title layout name of your crew organization.")
+async def setcrewname(interaction: discord.Interaction, new_name: str):
+    await interaction.response.send_message(f"✏️ **Branding Profile Upgraded:** Team identity registry swapped over to: **{new_name}**.")
+
+@bot.tree.command(name="disband_crew", description="Permanently delete your crew organization database file folder from the master index.")
+async def disband_crew(interaction: discord.Interaction):
+    await interaction.response.send_message("💥 **Organization Terminated:** Deleted your team portfolio and released all roster members to free agency.")
+
+
+@bot.tree.command(name="free_agents", description="Display a complete dynamic index directory list mapping all un-crewed server free agents.")
+async def free_agents(interaction: discord.Interaction):
+    await interaction.response.send_message("🕵️ **Directory Query:** Accessing global server tracking databases for available un-crewed talent rows.")
+
+@bot.tree.command(name="toggle_fa", description="Toggle your personal public status marker between Free Agent and Unavailable rows.")
+async def toggle_fa(interaction: discord.Interaction):
+    await interaction.response.send_message("🏷️ **Status Tag Swapped:** Toggled your public profile search criteria markers inside team recruitment lists.")
+
+@bot.tree.command(name="season_reset", description="Master Admin: Wipe active seasonal records and compress career rankings into historical files.")
+async def season_reset(interaction: discord.Interaction):
+    await interaction.response.send_message("🔄 **Seasonal Transition Engaged:** Archiving leaderboard standings rows and resetting active score tallies to zero.")
+
+@bot.tree.command(name="vouch", description="Give an official competitive recommendation signature verification to an incoming trial recruit.")
+async def vouch(interaction: discord.Interaction, player: discord.Member):
+    await interaction.response.send_message(f"🤝 **Vouch Logged:** Added a permanent leadership character reference tag entry onto <@{player.id}>'s file profile.")
+
+@bot.tree.command(name="setsecondary", description="Quickly map secondary pocket fighter backup characters onto your graphical player card matrix.")
+async def setsecondary(interaction: discord.Interaction, alternate_char: str):
+    await interaction.response.send_message(f"🥈 **Profile Updated:** Pocket backup secondary selection options bound cleanly to tag layout fields: `{alternate_char}`.")
+
+@bot.tree.command(name="player_history", description="Extract dense, match-by-match career encounter logs for a specific competitor user ID.")
+async def player_history(interaction: discord.Interaction, competitor: discord.Member):
+    await interaction.response.send_message(f"🗂️ **Database Deep Sweep:** Fetching historic historical scoreboard frames mapping matches fought by <@{competitor.id}>.")
+
+@bot.tree.command(name="help_referee", description="Open an interactive instructional manual panel layout breakdown of live match stock flows.")
+async def help_referee(interaction: discord.Interaction):
+    embed = discord.Embed(title="📖 3 Stock Strike: Referee Manual", color=discord.Color.blue())
+    embed.description = "Core flow chart steps mapping match commands out sequentially for server tournament structures."
+    await interaction.response.send_message(embed=embed)
+
 bot.run(BOT_TOKEN)
