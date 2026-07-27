@@ -2,3 +2,4 @@ discord.py
 motor
 pydantic
 pillow
+aiohttp
