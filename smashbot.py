@@ -1,3 +1,18 @@
+import os
+from aiohttp import web
+import asyncio
+
+# Free Tier Port Bypass: Keeps Render's port checker happy
+async def handle(request): return web.Response(text="Bot is running!")
+app = web.Application()
+app.router.add_get('/', handle)
+async def run_web():
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 10000)))
+    await site.start()
+asyncio.get_event_loop().create_task(run_web())
+
 import discord
 from discord import app_commands
 from motor.motor_asyncio import AsyncIOMotorClient
