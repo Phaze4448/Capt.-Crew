@@ -312,43 +312,39 @@ async def tester(interaction: discord.Interaction, action: str, member: discord.
 async def transferownership(interaction: discord.Interaction, recipient: discord.Member):
     await interaction.response.send_message(f"👑 **Ownership Migration Complete:** Primary administration matrix keys moved safely to <@{recipient.id}>.")
 
-@bot.tree.command(name="shop", description="Access the points cosmetic shop marketplace layer to pick up special card layout background visual variants.")
+@bot.tree.command(name="shop", description="Access the cosmetic shop marketplace to browse alternative profile card background skins.")
 async def shop(interaction: discord.Interaction):
     await interaction.response.send_message("🛒 **Cosmetics Marketplace Connected:** Browsing item catalogs for card background overlays.")
 
-@bot.tree.command(name="setprofile", description="All-in-one configuration layout setup for your character mains and regional vectors.")
-async def setprofile(interaction: discord.Interaction, main_char: str, region: str):
-    await interaction.response.send_message(f"✅ Configuration verified: Mains set to `{main_char}` tracking out of region fields: `{region}`.")
-
-@bot.tree.command(name="setmains", description="Instantly update your signature primary competitive fighter profile character data rows.")
+@bot.tree.command(name="setmains", description="Instantly update your primary competitive character fighter choices on your card profile.")
 async def setmains(interaction: discord.Interaction, mains: str):
     await interaction.response.send_message(f"🎯 Competitive primary configuration rows set cleanly to: `{mains}`.")
 
-@bot.tree.command(name="setregion", description="Alter the geographic competitive server structural sector tag on your profile card layout.")
+@bot.tree.command(name="setregion", description="Alter the geographic competitive server tag displayed on your player profile banner.")
 async def setregion(interaction: discord.Interaction, location: str):
     await interaction.response.send_message(f"📍 Regional geolocation parameters mapped over to registry track: `{location}`.")
 
-@bot.tree.command(name="setcrewcolor", description="Map a signature organization embedded graphic theme background color layout code parameters.")
+@bot.tree.command(name="setcrewcolor", description="Map a signature organization background embed color code parameter variable.")
 async def setcrewcolor(interaction: discord.Interaction, color_hex: str):
     await interaction.response.send_message(f"🎨 Crew theme color configuration variable mapped over to parameters: `{color_hex}`.")
 
-@bot.tree.command(name="setcrewimage", description="Link an image URL to structural graphic panels displaying team specifications records layout files.")
+@bot.tree.command(name="setcrewimage", description="Link an image URL to panels displaying team specifications records layout files.")
 async def setcrewimage(interaction: discord.Interaction, url: str):
     await interaction.response.send_message("🖼️ Crew layout image canvas property binding parameters locked down cleanly.")
 
-@bot.tree.command(name="setcrewinfo", description="Publish structural text rule summaries describing trial demands on your public team boards.")
+@bot.tree.command(name="setcrewinfo", description="Publish summary text blocks describing active trial demands on team public boards.")
 async def setcrewinfo(interaction: discord.Interaction, text_details: str):
     await interaction.response.send_message("📝 **Team Board Rules Updated:** Profile descriptions modified successfully.")
 
-@bot.tree.command(name="setcrewlogo", description="Anchor an image link file to display as your signature crew organization crest symbol symbol.")
+@bot.tree.command(name="setcrewlogo", description="Anchor an image link file to display as your signature crew organization crest symbol.")
 async def setcrewlogo(interaction: discord.Interaction, logo_url: str):
     await interaction.response.send_message("🛡️ Organization structural team crest logo updated cleanly inside system archives.")
 
-@bot.tree.command(name="substitute", description="Swap a player asset registry mid-battle if an active teammate steps out grid paths.")
+@bot.tree.command(name="substitute", description="Swap a player asset registry mid-battle if an active teammate steps out of loop paths.")
 async def substitute(interaction: discord.Interaction, player_out: discord.Member, player_in: discord.Member):
     await interaction.response.send_message(f"🔄 **Roster Substitution Logged:** Pulling out <@{player_out.id}> and path routing <@{player_in.id}> into live arena loops.")
 
-@bot.tree.command(name="create_crew", description="Register a brand new crew into the database collection rows.")
+@bot.tree.command(name="create_crew", description="Register a brand new crew identity row folder into the database collection.")
 async def create_crew(interaction: discord.Interaction, name: str):
     user_id = interaction.user.id
     in_crew = await bot.db.crews.find_one({"members": user_id})
