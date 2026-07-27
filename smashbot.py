@@ -713,46 +713,36 @@ async def setcrewlogo(interaction: discord.Interaction, logo_url: str):
 async def substitute(interaction: discord.Interaction, player_out: discord.Member, player_in: discord.Member):
     await interaction.response.send_message(f"🔄 **Roster Substitution Logged:** Pulling out <@{player_out.id}> and path routing <@{player_in.id}> into live arena loops.")
 
-@bot.tree.command(name="create_crew", description="Register a new crew and initialize their locked private headquarters thread.")
+@bot.tree.command(name="create_crew", description="Register a new crew.")
 async def create_crew(interaction: discord.Interaction, name: str):
-    user_id = interaction.user.id
-    
-    # 1. Defend against timeouts
     await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild
     
-    # 2. Query MongoDB
-    in_crew = await bot.db.crews.find_one({"members": user_id})
-    if in_crew:
-        await interaction.followup.send("❌ Error: You are already in a crew.", ephemeral=True)
-        return
+    try:
+        # Check for existing crew
+        if await bot.db.crews.find_one({"members": interaction.user.id}):
+            await interaction.followup.send("❌ Already in a crew.", ephemeral=True)
+            return
+
+        # Find registration channel and create thread
+        reg_channel = discord.utils.get(guild.text_channels, name="crew-registration")
+        if not reg_channel:
+            await interaction.followup.send("❌ Setup Error: #crew-registration channel not found.", ephemeral=True)
+            return
+
+        thread = await reg_channel.create_thread(
+            name=name, type=discord.ChannelType.private_thread
+        )
         
-    name_exists = await bot.db.crews.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
-    if name_exists:
-        await interaction.followup.send("❌ Error: Crew name taken.", ephemeral=True)
-        return
+        # Save and Notify
+        await bot.db.crews.insert_one({"name": name, "owner": interaction.user.id})
+        await thread.add_user(interaction.user)
+        await interaction.followup.send(f"✅ Created: <#{thread.id}>", ephemeral=True)
+        await thread.send(f"Welcome to {name} HQ, <@{interaction.user.id}>!")
 
-    # 3. Create the private thread named EXACTLY after the crew
-    personal_thread = await interaction.channel.create_thread(
-        name=name,
-        auto_archive_duration=4320,
-        type=discord.ChannelType.private_thread,
-        reason=f"Initialize Private Headquarters for {name}."
-    )
-
-    # 4. Save data to MongoDB
-    new_crew = CrewModel(name=name, owner_id=user_id, leaders=[user_id], members=[user_id])
-    await bot.db.crews.insert_one(new_crew.model_dump())
-
-    # 5. Add user to the new private thread
-    await personal_thread.add_user(interaction.user)
-
-    # 6. Success message via follow-up
-    await interaction.followup.send(f"✅ **Crew Registered!** Private thread: <#{personal_thread.id}>.", ephemeral=True)
-
-    # 7. Send onboarding message
-    embed = discord.Embed(title=f"👑 {name} Headquarters", color=discord.Color.from_str("#7289DA"))
-    embed.description = f"**Secure Private Thread**\n\n• Only <@{user_id}> can access this.\n• Use **`+ Add to Thread`** to recruit members!"
-    await personal_thread.send(embed=embed)
+    except Exception as e:
+        print(f"Error: {e}")
+        await interaction.followup.send("❌ Error creating crew.", ephemeral=True)
 
 
 @bot.tree.command(name="force_win", description="Staff Override: Instantly award the active match victory to a specific crew team.")
