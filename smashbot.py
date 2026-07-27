@@ -713,43 +713,39 @@ async def setcrewlogo(interaction: discord.Interaction, logo_url: str):
 async def substitute(interaction: discord.Interaction, player_out: discord.Member, player_in: discord.Member):
     await interaction.response.send_message(f"🔄 **Roster Substitution Logged:** Pulling out <@{player_out.id}> and path routing <@{player_in.id}> into live arena loops.")
 
-@bot.tree.command(name="create_crew", description="Register a new crew.")
+@bot.tree.command(name="create_crew", description="Register a new crew team under a strict single-ownership limit.")
 async def create_crew(interaction: discord.Interaction, name: str):
     await interaction.response.defer(ephemeral=True)
     user_id = interaction.user.id
     
     try:
-        # 1. Check if the user is already in a crew using a simple list search
-        existing_crew = await bot.db.crews.find_one({"members": user_id})
+        # 1. Look for ANY existing crew where this user is already involved
+        existing_crew = await bot.db.crews.find_one({
+            "$or": [{"owner": user_id}, {"leaders": user_id}, {"members": user_id}]
+        })
+        
         if existing_crew:
-            await interaction.followup.send("❌ Error: You are already in a crew. You cannot create multiple crews.", ephemeral=True)
+            await interaction.followup.send(f"❌ You are already in a crew: **{existing_crew['name']}**.", ephemeral=True)
             return
 
-        # 2. Check if the crew name is taken
-        name_taken = await bot.db.crews.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
-        if name_taken:
-            await interaction.followup.send("❌ Error: Crew name taken.", ephemeral=True)
+        # 2. Check for duplicate team name
+        if await bot.db.crews.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}}):
+            await interaction.followup.send("❌ Crew name already taken.", ephemeral=True)
             return
 
-        # 3. Create the private thread (using your working setup)
-        personal_thread = await interaction.channel.create_thread(
-            name=name, 
-            type=discord.ChannelType.private_thread
-        )
-
-        # 4. Save the crew data using your original structure
+        # 3. Create thread, 4. Insert data into DB ensuring strict 1-crew limit
+        thread = await interaction.channel.create_thread(name=f"crew-{name}", type=discord.ChannelType.private_thread)
         await bot.db.crews.insert_one({
             "name": name,
-            "owner": user_id,
-            "members": [user_id]
+            "owner": user_id, 
+            "leaders": [user_id], 
+            "members": [user_id], 
+            "elo": 1000
         })
-
-        await interaction.followup.send(f"✅ Crew Created: <#{personal_thread.id}>", ephemeral=True)
+        await interaction.followup.send(f"✅ Created! <#{thread.id}>", ephemeral=True)
 
     except Exception as e:
-        # If a crash happens, print the exact problem on screen so we don't need logs
-        await interaction.followup.send(f"❌ An error occurred. Details: {e}", ephemeral=True)
-
+        await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
 
 
 @bot.tree.command(name="force_win", description="Staff Override: Instantly award the active match victory to a specific crew team.")
