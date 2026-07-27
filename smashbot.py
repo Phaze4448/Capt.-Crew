@@ -111,6 +111,129 @@ async def get_or_create_profile(user_id: int) -> dict:
         return new_p.model_dump()
     return profile
 
+@bot.event
+async def on_message(message: discord.Message):
+    # 1. Defend against bot infinity loops
+    if message.author.bot:
+        return
+
+    # 2. Check if the bot was explicitly mentioned
+    if bot.user not in message.mentions:
+        return
+
+    # 3. Verify this channel has an active battle row tracked in MongoDB
+    battle = await bot.db.active_battles.find_one({"channel_id": message.channel.id})
+    if not battle:
+        return  # Silently ignore if it's just a general server mention
+
+    # 4. Clean text and extract parameters: [@Bot, Winner, Character, Stocks]
+    tokens = [t.strip() for t in message.content.split() if t.strip()]
+    
+    # We expect exactly 4 pieces of data
+    if len(tokens) < 4:
+        await message.channel.send("❌ **Parsing Error!** Format must be exactly: `@Bot [WinnerName] [Character] [StocksLeft]`\n*Example:* `@SmashBot Phaze Link 2`")
+        return
+
+    winner_name_str = tokens[1]
+    character_input = tokens[2]
+    stocks_left_str = tokens[3]
+
+    # Validate numeric properties
+    if not stocks_left_str.isdigit():
+        await message.channel.send("❌ **Parsing Error!** Stocks left must be a valid number between 1 and 3.")
+        return
+    stocks_left = int(stocks_left_str)
+    if not (1 <= stocks_left <= 3):
+        await message.channel.send("❌ **Rule Violation!** Remaining stocks must be 1, 2, or 3.")
+        return
+
+    # 5. Extract members list from the active database tracking row
+    roster_a_ids = battle["roster_a"]
+    roster_b_ids = battle["roster_b"]
+
+    # Search for match variables across active channel members
+    winning_member = None
+    for member in message.channel.members:
+        if winner_name_str.lower() in member.display_name.lower() or winner_name_str.lower() in member.name.lower():
+            if member.id in roster_a_ids or member.id in roster_b_ids:
+                winning_member = member
+                break
+
+    if not winning_member:
+        await message.channel.send(f"❌ **Identity Error!** Could not identify an active roster competitor matching string: `{winner_name_str}`.")
+        return
+
+    # 6. Apply Standard Crew Battle Rules Progression Logic
+    is_team_a = winning_member.id in roster_a_ids
+    
+    if is_team_a:
+        winning_crew = battle["crew_a"]
+        losing_crew = battle["crew_b"]
+        current_loser_id = battle["current_player_b"]
+        
+        # Calculate stocks taken from the loser's active fighter
+        loser_stocks_lost = battle["stocks_b"]
+        new_total_stocks_b = max(0, battle["total_stocks_b"] - loser_stocks_lost)
+        new_total_stocks_a = battle["total_stocks_a"]
+        
+        # Carry over winner's remaining stocks; reset upcoming counterpick to 3
+        new_stocks_a = stocks_left
+        new_stocks_b = 3
+        
+        # Sync profile card analytics counts
+        await bot.db.players.update_one({"user_id": winning_member.id}, {"$inc": {"stocks_taken": loser_stocks_lost}})
+        await bot.db.players.update_one({"user_id": current_loser_id}, {"$inc": {"stocks_lost": loser_stocks_lost}})
+    else:
+        winning_crew = battle["crew_b"]
+        losing_crew = battle["crew_a"]
+        current_loser_id = battle["current_player_a"]
+        
+        loser_stocks_lost = battle["stocks_a"]
+        new_total_stocks_a = max(0, battle["total_stocks_a"] - loser_stocks_lost)
+        new_total_stocks_b = battle["total_stocks_b"]
+        
+        new_stocks_b = stocks_left
+        new_stocks_a = 3
+        
+        await bot.db.players.update_one({"user_id": winning_member.id}, {"$inc": {"stocks_taken": loser_stocks_lost}})
+        await bot.db.players.update_one({"user_id": current_loser_id}, {"$inc": {"stocks_lost": loser_stocks_lost}})
+
+    # 7. Check Game Over Win/Loss States (One squad runs out of total stocks)
+    if new_total_stocks_a == 0 or new_total_stocks_b == 0:
+        match_winner = battle["crew_a"] if new_total_stocks_b == 0 else battle["crew_b"]
+        match_loser = battle["crew_b"] if new_total_stocks_b == 0 else battle["crew_a"]
+        
+        embed = discord.Embed(title="🏆 CREW BATTLE CONCLUDED 🏆", color=discord.Color.gold())
+        embed.description = f"🏁 **{match_winner}** has taken the final stock pool and defeated **{match_loser}**!"
+        embed.add_field(name="Final Leftover Stock Matrix", value=f"Stocks: `{max(new_total_stocks_a, new_total_stocks_b)}`", inline=False)
+        embed.set_footer(text="Match logs frozen. Run /approve_battle to finalize records.")
+        
+        await bot.db.active_battles.update_one(
+            {"channel_id": message.channel.id},
+            {"$set": {"total_stocks_a": new_total_stocks_a, "total_stocks_b": new_total_stocks_b}}
+        )
+        await message.channel.send(embed=embed)
+        return
+
+    # 8. Frame Up Next Counterpick State Variables
+    update_data = {
+        "stocks_a": new_stocks_a,
+        "stocks_b": new_stocks_b,
+        "total_stocks_a": new_total_stocks_a,
+        "total_stocks_b": new_total_stocks_b
+    }
+    await bot.db.active_battles.update_one({"channel_id": message.channel.id}, {"$set": update_data})
+
+    # 9. Print real-time scoresheet match updates onto the channel
+    embed = discord.Embed(title="🎮 Automated Score Logs Updated", color=discord.Color.green())
+    embed.description = f"**{winning_member.display_name}** ({character_input}) wins the game! Carrying over **{stocks_left}★**."
+    embed.add_field(name=f"📊 {battle['crew_a']}", value=f"Stocks Remaining: `{new_total_stocks_a}`", inline=True)
+    embed.add_field(name=f"📊 {battle['crew_b']}", value=f"Stocks Remaining: `{new_total_stocks_b}`", inline=True)
+    embed.set_footer(text=f"Awaiting counterpick recruitment entry from {losing_crew} via /send.")
+    
+    await message.channel.send(embed=embed)
+
+
 
 @bot.tree.command(name="start_battle", description="Initialize an official competitive crew battle in a brand new dedicated text channel.")
 async def start_battle(interaction: discord.Interaction, opponent_crew: str):
@@ -166,9 +289,53 @@ async def mock(interaction: discord.Interaction, team_a: str, team_b: str):
 async def counterpick(interaction: discord.Interaction):
     await interaction.response.send_message("🔄 **Counterpick Phase Triggered:** Waiting for incoming roster selections.")
 
-@bot.tree.command(name="send", description="Deploy the next counterpick combat fighter.")
+@bot.tree.command(name="send", description="Deploy your crew's next counterpick combat fighter into the live arena.")
 async def send(interaction: discord.Interaction, player: discord.Member):
-    await interaction.response.send_message(f"🚀 Roster entry deployed! <@{player.id}> is jumping into the arena!")
+    await interaction.response.defer()
+    
+    # 1. Verify this channel has an active match tracked
+    battle = await bot.db.active_battles.find_one({"channel_id": interaction.channel_id})
+    if not battle:
+        await interaction.followup.send("❌ Error: No official active battle registered to this channel context.")
+        return
+
+    # 2. Determine which crew the target player belongs to
+    is_team_a = player.id in battle["roster_a"]
+    is_team_b = player.id in battle["roster_b"]
+    
+    if not is_team_a and not is_team_b:
+        await interaction.followup.send(f"❌ Error: {player.display_name} is not registered on either team's roster.")
+        return
+
+    # 3. Restrict deployment logic based on who needs to counterpick
+    if is_team_a:
+        if battle["stocks_a"] != 3:
+            await interaction.followup.send("❌ Rule Violation: You cannot send a new fighter while your current fighter still has stocks left.")
+            return
+        
+        await bot.db.active_battles.update_one(
+            {"channel_id": interaction.channel_id}, 
+            {"$set": {"current_player_a": player.id}}
+        )
+        current_crew = battle["crew_a"]
+    else:
+        if battle["stocks_b"] != 3:
+            await interaction.followup.send("❌ Rule Violation: You cannot send a new fighter while your current fighter still has stocks left.")
+            return
+            
+        await bot.db.active_battles.update_one(
+            {"channel_id": interaction.channel_id}, 
+            {"$set": {"current_player_b": player.id}}
+        )
+        current_crew = battle["crew_b"]
+
+    # 4. Confirm entry visually
+    embed = discord.Embed(title="🚀 Roster Entry Deployed", color=discord.Color.orange())
+    embed.description = f"**{player.display_name}** has jumped into the arena representing **{current_crew}**!"
+    embed.set_footer(text="Play your game! When finished, mention the bot to log the score.")
+    
+    await interaction.followup.send(embed=embed)
+
 
 @bot.tree.command(name="recordmatch", description="Manually log specific individual score data details.")
 async def recordmatch(interaction: discord.Interaction, winner: discord.Member, loser: discord.Member, stocks: int):
@@ -186,14 +353,103 @@ async def extend(interaction: discord.Interaction):
 async def timer(interaction: discord.Interaction):
     await interaction.response.send_message("⏳ **8-Minute Match Timer Started:** Stay alert on response locks!")
 
-@bot.tree.command(name="forfeit", description="Voluntarily concede the current match map calculation flow.")
-async def forfeit(interaction: discord.Interaction):
-    await interaction.response.send_message("🏳️ **Concession Logged:** Crew has chosen to forfeit the current map section.")
+# 1. DEFINE THE INTERACTIVE BUTTON INTERFACE OVERLAY
+class ForfeitConfirmation(discord.ui.View):
+    def __init__(self, initiator: discord.Member):
+        super().__init__(timeout=60.0)  # Buttons automatically shut off after 60 seconds of inactivity
+        self.initiator = initiator
 
-@bot.tree.command(name="endbattle", description="Force close and archive an active battle track sequence layout.")
+    @discord.ui.button(label="Yes, Forfeit Match", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Defend against unauthorized users hijacking the prompt
+        if interaction.user.id != self.initiator.id:
+            await interaction.response.send_message("❌ Error: Only the player who triggered the forfeit can confirm it.", ephemeral=True)
+            return
+            
+        await interaction.response.defer()
+        
+        # 1. Fetch active battle tracking data linked to this channel context
+        battle = await bot.db.active_battles.find_one({"channel_id": interaction.channel_id})
+        if not battle:
+            await interaction.followup.send("❌ Error: No official active battle registered to this channel.")
+            return
+
+        # 2. Determine who the forfeiting team belongs to
+        is_team_a = interaction.user.id in battle["roster_a"]
+        match_winner = battle["crew_b"] if is_team_a else battle["crew_a"]
+        match_loser = battle["crew_a"] if is_team_a else battle["crew_b"]
+
+        # 3. Print the final victory announcement embed to the channel
+        embed = discord.Embed(title="🏳️ MATCH CONCLUDED VIA FORFEIT 🏳️", color=discord.Color.red())
+        embed.description = f"**{match_loser}** has voluntarily conceded the match!\n\n🏆 **{match_winner}** is officially awarded the victory!"
+        embed.set_footer(text="Match logs frozen. Deleting channel in 10 seconds...")
+        await interaction.channel.send(embed=embed)
+
+        # 4. Clear active tracking file from MongoDB database storage records
+        await bot.db.active_battles.delete_one({"channel_id": interaction.channel_id})
+
+        # 5. Disable active buttons on the original prompt
+        self.stop()
+        
+        # 6. Wait 10 seconds and permanently purge the text channel environment
+        await asyncio.sleep(10)
+        await interaction.channel.delete()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.initiator.id:
+            await interaction.response.send_message("❌ Error: Only the player who triggered the forfeit can cancel it.", ephemeral=True)
+            return
+            
+        self.stop()
+        await interaction.response.edit_message(content="🛑 **Forfeit Cancelled.** The crew battle will continue normally!", view=None)
+
+# 2. THE ACTUAL APPLICATION SLASH COMMAND
+@bot.tree.command(name="forfeit", description="Voluntarily concede the entire match and award victory to the opposing crew.")
+async def forfeit(interaction: discord.Interaction):
+    # 1. Verify this channel is actively tracking an ongoing match
+    battle = await bot.db.active_battles.find_one({"channel_id": interaction.channel_id})
+    if not battle:
+        await interaction.response.send_message("❌ Error: You can only forfeit inside an active match channel context.", ephemeral=True)
+        return
+
+    # 2. Verify the player belongs to one of the active match rosters
+    is_team_a = interaction.user.id in battle["roster_a"]
+    is_team_b = interaction.user.id in battle["roster_b"]
+    if not is_team_a and not is_team_b:
+        await interaction.response.send_message("❌ Error: You must be a registered competitor on this match scoresheet to issue a forfeit.", ephemeral=True)
+        return
+
+    # 3. Deploy the confirmation interface message overlay
+    view = ForfeitConfirmation(initiator=interaction.user)
+    await interaction.response.send_message(
+        content="⚠️ **CRITICAL WARNING:** Are you completely sure you want to forfeit the **entire match**? This will instantly award the victory to your opponents and delete this channel.",
+        view=view
+    )
+
+
+@bot.tree.command(name="endbattle", description="Force close, remove records, and permanently delete an active battle channel.")
+@app_commands.checks.has_permissions(manage_channels=True)
 async def endbattle(interaction: discord.Interaction):
+    # 1. Defend the thread from timeout cutoffs
+    await interaction.response.defer(ephemeral=True)
+    
+    # 2. Check if this channel has an active tracking row inside MongoDB
+    battle = await bot.db.active_battles.find_one({"channel_id": interaction.channel_id})
+    if not battle:
+        await interaction.followup.send("❌ Error: No official active battle registered to this channel context.", ephemeral=True)
+        return
+
+    # 3. Clean and delete the match row tracking matrix from the database
     await bot.db.active_battles.delete_one({"channel_id": interaction.channel_id})
-    await interaction.response.send_message("🛑 **Match Closed:** Roster logs compiled and active session path purged cleanly.")
+    
+    # 4. Announce cleanup and safely delete the Discord text channel
+    await interaction.followup.send("🛑 **Match Closed:** Roster records purged cleanly. Deleting channel in 5 seconds...", ephemeral=True)
+    await interaction.channel.send("🛑 **Administrative Closure:** This match channel is being deleted in 5 seconds...")
+    
+    await asyncio.sleep(5)
+    await interaction.channel.delete()
+
 
 @bot.tree.command(name="endmock", description="Instantly terminate a practice casual simulation layer.")
 async def endmock(interaction: discord.Interaction):
@@ -226,9 +482,36 @@ async def leaderboard(interaction: discord.Interaction):
         embed.add_field(name=f"#{i} {c['name']}", value=f"Elo: `{c['elo']}` | Record: {c['wins']}W - {c['losses']}L", inline=False)
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="rankings", description="Fetch the exact structural tier placement brackets for the active season array.")
+@bot.tree.command(name="rankings", description="Fetch the structural tier placement brackets for the active seasonal standings.")
 async def rankings(interaction: discord.Interaction):
-    await interaction.response.send_message("📈 **Bracket Standings:** Accessing official division structural arrays.")
+    await interaction.response.defer()
+    
+    # 1. Fetch data metrics sorted by highest competitive Elo score
+    cursor = bot.db.crews.find().sort("elo", -1).limit(15)
+    crews = await cursor.to_list(length=15)
+    
+    embed = discord.Embed(title="📊 Seasonal Division Bracket Rankings", color=discord.Color.purple())
+    
+    tier_diamond = []
+    tier_gold = []
+    tier_silver = []
+    
+    # 2. Filter teams instantly into local structural rows based on current stats
+    for c in crews:
+        row_str = f"• **{c['name']}** (Elo: `{c['elo']}` | Record: {c['wins']}W - {c['losses']}L)"
+        if c['elo'] >= 1150:
+            tier_diamond.append(row_str)
+        elif c['elo'] >= 1000:
+            tier_gold.append(row_str)
+        else:
+            tier_silver.append(row_str)
+            
+    # 3. Compile layout columns into the final text embed
+    embed.add_field(name="💎 Diamond Division (1150+ Elo)", value="\n".join(tier_diamond) if tier_diamond else "*No teams currently qualified*", inline=False)
+    embed.add_field(name="🥇 Gold Division (1000-1149 Elo)", value="\n".join(tier_gold) if tier_gold else "*No teams currently qualified*", inline=False)
+    embed.add_field(name="🥈 Silver Division (<1000 Elo)", value="\n".join(tier_silver) if tier_silver else "*No teams currently qualified*", inline=False)
+    
+    await interaction.followup.send(embed=embed)
 
 @bot.tree.command(name="lumirank", description="Instantly display the latest global real-world professional player data tiers.")
 async def lumirank(interaction: discord.Interaction):
@@ -317,16 +600,57 @@ async def coin(interaction: discord.Interaction):
     res = random.choice(["Heads 🪙", "Tails 🪙"])
     await interaction.response.send_message(f"🪙 Coin flipped: It landed squarely on **{res}**!")
 
-@bot.tree.command(name="countdown", description="Trigger a rapid utility 10-second structural clock execution frame.")
+@bot.tree.command(name="countdown", description="10-second countdown.")
 async def countdown(interaction: discord.Interaction):
-    await interaction.response.send_message("⏰ **Pacing Countdown Commenced:** 10... 9... 8... Ready up standard configurations!")
+    # Send the initial message
+    await interaction.response.send_message("⏰ **Countdown: 10**")
+    
+    # Fetch the message to edit
+    countdown_msg = await interaction.original_response()
+    
+    # Loop from 9 to 1
 
-@bot.tree.command(name="stagelist", description="Display full list of legal starter and counterpick arenas.")
+    for seconds_left in range(9, 0, -1):
+        await asyncio.sleep(1)
+        await countdown_msg.edit(content=f"⏰ **Countdown: {seconds_left}**")
+        
+    # Finalize
+    await asyncio.sleep(1)
+    await countdown_msg.edit(content="🏁 **Countdown Finished! Ready up!**")
+
+@bot.tree.command(name="approve_battle", description="Staff Only: Approve scoresheet, update records, and delete match channel.")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def approve_battle(interaction: discord.Interaction, winner_crew: str, loser_crew: str):
+    await interaction.response.defer(ephemeral=True)
+    
+    # 1. Update Database Stats
+    await bot.db.crews.update_one({"name": {"$regex": f"^{winner_crew}$", "$options": "i"}}, {"$inc": {"wins": 1, "elo": 25}})
+    await bot.db.crews.update_one({"name": {"$regex": f"^{loser_crew}$", "$options": "i"}}, {"$inc": {"losses": 1, "elo": -25}})
+    
+    # 2. Purge active tracking row from DB
+    await bot.db.active_battles.delete_one({"channel_id": interaction.channel_id})
+    
+    # 3. Inform and delete channel
+    await interaction.followup.send("✅ Scoresheet Approved! Deleting channel in 5 seconds...")
+    await asyncio.sleep(5)
+    await interaction.channel.delete()
+
+
+@bot.tree.command(name="stagelist", description="Display full visual graphic maps mapping all legal starters and counterpick arenas.")
 async def stagelist(interaction: discord.Interaction):
-    embed = discord.Embed(title="🗺️ Legal Arena Standings", color=discord.Color.dark_gray())
-    embed.add_field(name="Starters", value="\n".join(LEGAL_STARTERS))
-    embed.add_field(name="Counterpicks", value="\n".join(LEGAL_COUNTERPICKS))
+    embed = discord.Embed(title="🗺️ Official 3 Stock Strike Arena Ruleset", color=discord.Color.dark_gray())
+    
+    # 1. Map out structural listings cleanly
+    embed.add_field(name="🔹 Starters (Game 1 Choices)", value="\n". join([f"• {stage}" for stage in LEGAL_STARTERS]), inline=True)
+    embed.add_field(name="🔸 Counterpicks (Games 2+)", value="\n". join([f"• {stage}" for stage in LEGAL_COUNTERPICKS]), inline=True)
+    
+    # 2. Attach direct graphic layout URL (0% server footprint)
+    # REPLACE THIS URL with your own custom ruleset image link if preferred
+    embed.set_image(url="https://i.imgur.com/hRz1neH.jpeg") 
+    embed.set_footer(text="Alternate map banning procedures sequentially in channel chat.")
+    
     await interaction.response.send_message(embed=embed)
+
 
 @bot.tree.command(name="starter", description="Secretly declare your lead-off game 1 starter player layout anonymously.")
 async def starter(interaction: discord.Interaction, fighter: str):
@@ -389,50 +713,45 @@ async def setcrewlogo(interaction: discord.Interaction, logo_url: str):
 async def substitute(interaction: discord.Interaction, player_out: discord.Member, player_in: discord.Member):
     await interaction.response.send_message(f"🔄 **Roster Substitution Logged:** Pulling out <@{player_out.id}> and path routing <@{player_in.id}> into live arena loops.")
 
-@bot.tree.command(name="create_crew", description="Register a brand new crew and initialize their locked private headquarters thread.")
+@bot.tree.command(name="create_crew", description="Register a new crew and initialize their locked private headquarters thread.")
 async def create_crew(interaction: discord.Interaction, name: str):
     user_id = interaction.user.id
-    in_crew = await bot.db.crews.find_one({"members": user_id})
     
+    # 1. Defend against timeouts
+    await interaction.response.defer(ephemeral=True)
+    
+    # 2. Query MongoDB
+    in_crew = await bot.db.crews.find_one({"members": user_id})
     if in_crew:
-        await interaction.response.send_message("❌ Error: You are already registered to an active crew team roster loop.", ephemeral=True)
+        await interaction.followup.send("❌ Error: You are already in a crew.", ephemeral=True)
         return
         
     name_exists = await bot.db.crews.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
     if name_exists:
-        await interaction.response.send_message("❌ Error: That crew organization name is already cataloged.", ephemeral=True)
+        await interaction.followup.send("❌ Error: Crew name taken.", ephemeral=True)
         return
 
-    # Defer response to buy time for private channel creation sweeps
-    await interaction.response.defer()
-
-    # 🔒 DYNAMIC PRIVATE THREAD GENERATION LOGIC
-    # Private threads completely hide the huddle space from anyone not explicitly added
-    crew_thread_title = f"🔒┃{name}-headquarters"
+    # 3. Create the private thread named EXACTLY after the crew
     personal_thread = await interaction.channel.create_thread(
-        name=crew_thread_title,
-        auto_archive_duration=4320, # Keeps it open for multiple days of roster strategy chatter
+        name=name,
+        auto_archive_duration=4320,
         type=discord.ChannelType.private_thread,
-        reason=f"Locked 3 Stock Strike Private Headquarters Instance Framework Initialization."
+        reason=f"Initialize Private Headquarters for {name}."
     )
 
-    # Save data arrays cleanly into MongoDB cloud data storage models
+    # 4. Save data to MongoDB
     new_crew = CrewModel(name=name, owner_id=user_id, leaders=[user_id], members=[user_id])
     await bot.db.crews.insert_one(new_crew.model_dump())
-    
-    # Explicitly pull the creator user profile into the newly formed private workspace
+
+    # 5. Add user to the new private thread
     await personal_thread.add_user(interaction.user)
-    
-    # Send a clean fallback confirmation message onto the main setup channel
-    await interaction.followup.send(f"✅ **Crew Registered!** Your locked private operations thread has been successfully initialized at <#{personal_thread.id}>.")
-    
-    # Send a welcoming guide statement right into the secure bunker room
-    embed = discord.Embed(title=f"👑 Welcome to the {name} Headquarters 👑", color=discord.Color.from_str("#7289DA"))
-    embed.description = (
-        f"This workspace is a **Secure Private Thread** locked away from the public server channel list.\n\n"
-        f"• **Roster Status:** Only <@{user_id}> can access this feed initially.\n"
-        f"• **Recruitment Actions:** Use Discord's built-in **`+ Add to Thread`** link panel button at the top of your screen to pull your roster members in!"
-    )
+
+    # 6. Success message via follow-up
+    await interaction.followup.send(f"✅ **Crew Registered!** Private thread: <#{personal_thread.id}>.", ephemeral=True)
+
+    # 7. Send onboarding message
+    embed = discord.Embed(title=f"👑 {name} Headquarters", color=discord.Color.from_str("#7289DA"))
+    embed.description = f"**Secure Private Thread**\n\n• Only <@{user_id}> can access this.\n• Use **`+ Add to Thread`** to recruit members!"
     await personal_thread.send(embed=embed)
 
 
