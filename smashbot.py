@@ -715,51 +715,40 @@ async def substitute(interaction: discord.Interaction, player_out: discord.Membe
 
 @bot.tree.command(name="create_crew", description="Register a new crew.")
 async def create_crew(interaction: discord.Interaction, name: str):
-    # 1. Defer immediately to give Render time to process
     await interaction.response.defer(ephemeral=True)
     user_id = interaction.user.id
     
     try:
-        # 2. RESTRICTION: Check if user already owns or belongs to ANY crew
-        existing_crew = await bot.db.crews.find_one({
-            "$or": [
-                {"owner_id": user_id},
-                {"owner": user_id},
-                {"members": user_id}
-            ]
-        })
-        
+        # 1. Check if the user is already in a crew using a simple list search
+        existing_crew = await bot.db.crews.find_one({"members": user_id})
         if existing_crew:
-            await interaction.followup.send("❌ Error: You already own or belong to an active crew.", ephemeral=True)
+            await interaction.followup.send("❌ Error: You are already in a crew. You cannot create multiple crews.", ephemeral=True)
             return
 
-        # 3. Check if name is taken
+        # 2. Check if the crew name is taken
         name_taken = await bot.db.crews.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
         if name_taken:
             await interaction.followup.send("❌ Error: Crew name taken.", ephemeral=True)
             return
 
-        # 4. Original simple thread creation in the CURRENT channel
+        # 3. Create the private thread (using your working setup)
         personal_thread = await interaction.channel.create_thread(
             name=name, 
             type=discord.ChannelType.private_thread
         )
 
-        # 5. Save the data to MongoDB using your raw dictionary fields
-        new_crew_data = {
+        # 4. Save the crew data using your original structure
+        await bot.db.crews.insert_one({
             "name": name,
-            "owner_id": user_id,
             "owner": user_id,
             "members": [user_id]
-        }
-        await bot.db.crews.insert_one(new_crew_data)
+        })
 
-        # 6. Basic notification
         await interaction.followup.send(f"✅ Crew Created: <#{personal_thread.id}>", ephemeral=True)
 
     except Exception as e:
-        print(f"Error: {e}")
-        await interaction.followup.send("❌ An error occurred.", ephemeral=True)
+        # If a crash happens, print the exact problem on screen so we don't need logs
+        await interaction.followup.send(f"❌ An error occurred. Details: {e}", ephemeral=True)
 
 
 
