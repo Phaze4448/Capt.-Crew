@@ -715,12 +715,11 @@ async def substitute(interaction: discord.Interaction, player_out: discord.Membe
 
 @bot.tree.command(name="create_crew", description="Register a new crew.")
 async def create_crew(interaction: discord.Interaction, name: str):
-    # 1. Defer immediately to give Render an execution window
     await interaction.response.defer(ephemeral=True)
     user_id = interaction.user.id
     
     try:
-        # 2. FIX: Check if this specific user already belongs to OR owns ANY crew
+        # 1. Check if user already owns or belongs to a crew
         existing_crew = await bot.db.crews.find_one({
             "$or": [
                 {"owner_id": user_id},
@@ -729,59 +728,62 @@ async def create_crew(interaction: discord.Interaction, name: str):
         })
         
         if existing_crew:
-            await interaction.followup.send("❌ **Registration Failed:** You already own or belong to an active crew! You cannot create multiple crews.", ephemeral=True)
+            await interaction.followup.send("❌ **Registration Failed:** You already own or belong to an active crew!", ephemeral=True)
             return
 
-        # Check if the desired crew name is taken (case-insensitive)
+        # 2. Check if the crew name is taken
         name_taken = await bot.db.crews.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
         if name_taken:
             await interaction.followup.send(f"❌ **Naming Error:** The crew name '{name}' is already taken.", ephemeral=True)
             return
 
-        # 3. Locate the registration channel safely
+        # 3. Locate the registration channel
         reg_channel = discord.utils.get(interaction.guild.text_channels, name="crew registration") or \
                       discord.utils.get(interaction.guild.text_channels, name="crew-registration")
         if not reg_channel:
-            await interaction.followup.send("❌ **Setup Error:** The designated channel `#crew-registration` could not be found.", ephemeral=True)
+            await interaction.followup.send("❌ **Setup Error:** Channel `#crew-registration` not found.", ephemeral=True)
             return
 
-        # 4. Create the private headquarters thread
+        # 4. Create the private thread
         personal_thread = await reg_channel.create_thread(
             name=name,
             auto_archive_duration=4320,
-            type=discord.ChannelType.private_thread,
-            reason=f"Initialize locked operations base for {name}."
+            type=discord.ChannelType.private_thread
         )
 
-        # 5. Populate the database matching your strict CrewModel schema layout
-        new_crew = CrewModel(
-            name=name, 
-            owner_id=user_id, 
-            leaders=[user_id], 
-            members=[user_id]
-        )
-        await bot.db.crews.insert_one(new_crew.model_dump())
+        # 5. FIX: Direct raw dictionary insert matching your smashbot.py database structure
+        new_crew_data = {
+            "name": name,
+            "owner_id": user_id,
+            "leaders": [user_id],
+            "members": [user_id]
+        }
+        await bot.db.crews.insert_one(new_crew_data)
 
-        # 6. Force add the user to their private thread 
+        # 6. Add the user to the thread
         await personal_thread.add_user(interaction.user)
 
-        # 7. Send the Custom Message, Ping the User, and Pin it immediately!
+        # 7. Send onboarding message
         welcome_msg = await personal_thread.send(
             content=f"🏁 **Welcome to your Headquarters, <@{user_id}>!**\n\n"
                     f"⚓ **Crew Name:** {name}\n"
                     f"👑 **Owner / Founder:** <@{user_id}>\n\n"
-                    f"This private thread is now officially open. Use this space to map out matches, manage your roster, and train for battles!"
+                    f"This private thread is now officially open."
         )
         
-        # Pin the welcoming message inside the channel
-        await welcome_msg.pin()
+        # 8. FIX: Try to pin the message, pass safely if bot lacks "Manage Messages" permission
+        try:
+            await welcome_msg.pin()
+        except Exception:
+            print("Warning: Bot missing 'Manage Messages' permission to pin the welcome message.")
 
-        # 8. Notify the user privately that it was successful
-        await interaction.followup.send(f"✅ **Crew Successfully Formed!** Your locked base has been deployed here: <#{personal_thread.id}>", ephemeral=True)
+        # 9. Complete the interaction
+        await interaction.followup.send(f"✅ **Crew Successfully Formed!** Your locked base is here: <#{personal_thread.id}>", ephemeral=True)
 
     except Exception as e:
-        print(f"CRITICAL ERROR IN CREATE_CREW: {e}")
+        print(f"CRITICAL ERROR: {e}")
         await interaction.followup.send("❌ An operational error occurred while creating your crew. Please check server logs.", ephemeral=True)
+
 
 
 
