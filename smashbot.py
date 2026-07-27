@@ -715,80 +715,51 @@ async def substitute(interaction: discord.Interaction, player_out: discord.Membe
 
 @bot.tree.command(name="create_crew", description="Register a new crew.")
 async def create_crew(interaction: discord.Interaction, name: str):
-    # 1. Defer immediately to appease Discord's 3-second rule
+    # 1. Defer immediately to give Render time to process
     await interaction.response.defer(ephemeral=True)
     user_id = interaction.user.id
     
     try:
-        # 2. BULLETPROOF DB CHECK: Check every possible field name used across code versions
+        # 2. RESTRICTION: Check if user already owns or belongs to ANY crew
         existing_crew = await bot.db.crews.find_one({
             "$or": [
                 {"owner_id": user_id},
                 {"owner": user_id},
-                {"members": user_id},
-                {"leaders": user_id}
+                {"members": user_id}
             ]
         })
         
         if existing_crew:
-            await interaction.followup.send("❌ **Registration Failed:** You already belong to or own an active crew!", ephemeral=True)
+            await interaction.followup.send("❌ Error: You already own or belong to an active crew.", ephemeral=True)
             return
 
-        # 3. Check name collision
+        # 3. Check if name is taken
         name_taken = await bot.db.crews.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
         if name_taken:
-            await interaction.followup.send(f"❌ **Naming Error:** The crew name '{name}' is already taken.", ephemeral=True)
+            await interaction.followup.send("❌ Error: Crew name taken.", ephemeral=True)
             return
 
-        # 4. CHANNELS FALLBACK: Check all possible variations of the channel name string
-        reg_channel = discord.utils.get(interaction.guild.text_channels, name="crew registration") or \
-                      discord.utils.get(interaction.guild.text_channels, name="crew-registration") or \
-                      discord.utils.get(interaction.guild.text_channels, name="Crew-Registration")
-                      
-        if not reg_channel:
-            await interaction.followup.send("❌ **Setup Error:** Could not find your registration channel. Verify it is named exactly `crew registration` or `crew-registration`.", ephemeral=True)
-            return
-
-        # 5. Create private thread base
-        personal_thread = await reg_channel.create_thread(
-            name=name,
-            auto_archive_duration=4320,
+        # 4. Original simple thread creation in the CURRENT channel
+        personal_thread = await interaction.channel.create_thread(
+            name=name, 
             type=discord.ChannelType.private_thread
         )
 
-        # 6. UNIVERSAL DB DOCUMENT: Saves both standard types to support older command iterations
+        # 5. Save the data to MongoDB using your raw dictionary fields
         new_crew_data = {
             "name": name,
             "owner_id": user_id,
             "owner": user_id,
-            "leaders": [user_id],
             "members": [user_id]
         }
         await bot.db.crews.insert_one(new_crew_data)
 
-        # 7. Add user and notify
-        await personal_thread.add_user(interaction.user)
-
-        welcome_msg = await personal_thread.send(
-            content=f"🏁 **Welcome to your Headquarters, <@{user_id}>!**\n\n"
-                    f"⚓ **Crew Name:** {name}\n"
-                    f"👑 **Owner / Founder:** <@{user_id}>\n\n"
-                    f"This private thread is now officially open."
-        )
-        
-        try:
-            await welcome_msg.pin()
-        except Exception:
-            pass # Keep moving if bot lacks permission
-
-        await interaction.followup.send(f"✅ **Crew Successfully Formed!** Your locked base is here: <#{personal_thread.id}>", ephemeral=True)
+        # 6. Basic notification
+        await interaction.followup.send(f"✅ Crew Created: <#{personal_thread.id}>", ephemeral=True)
 
     except Exception as e:
-        # Force print to Render system output stream so it shows up in logs no matter what
-        import sys
-        print(f"!!! CRITICAL CRASH LOG !!!: {e}", file=sys.stderr, flush=True)
-        await interaction.followup.send("❌ An operational error occurred while creating your crew. Please check server logs.", ephemeral=True)
-
+        print(f"Error: {e}")
+        await interaction.followup.send("❌ An error occurred.", ephemeral=True)
 
 
 
