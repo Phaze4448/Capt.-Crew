@@ -715,55 +715,60 @@ async def substitute(interaction: discord.Interaction, player_out: discord.Membe
 
 @bot.tree.command(name="create_crew", description="Register a new crew.")
 async def create_crew(interaction: discord.Interaction, name: str):
+    # 1. Defer immediately to appease Discord's 3-second rule
     await interaction.response.defer(ephemeral=True)
     user_id = interaction.user.id
     
     try:
-        # 1. Check if user already owns or belongs to a crew
+        # 2. BULLETPROOF DB CHECK: Check every possible field name used across code versions
         existing_crew = await bot.db.crews.find_one({
             "$or": [
                 {"owner_id": user_id},
-                {"members": user_id}
+                {"owner": user_id},
+                {"members": user_id},
+                {"leaders": user_id}
             ]
         })
         
         if existing_crew:
-            await interaction.followup.send("❌ **Registration Failed:** You already own or belong to an active crew!", ephemeral=True)
+            await interaction.followup.send("❌ **Registration Failed:** You already belong to or own an active crew!", ephemeral=True)
             return
 
-        # 2. Check if the crew name is taken
+        # 3. Check name collision
         name_taken = await bot.db.crews.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
         if name_taken:
             await interaction.followup.send(f"❌ **Naming Error:** The crew name '{name}' is already taken.", ephemeral=True)
             return
 
-        # 3. Locate the registration channel
+        # 4. CHANNELS FALLBACK: Check all possible variations of the channel name string
         reg_channel = discord.utils.get(interaction.guild.text_channels, name="crew registration") or \
-                      discord.utils.get(interaction.guild.text_channels, name="crew-registration")
+                      discord.utils.get(interaction.guild.text_channels, name="crew-registration") or \
+                      discord.utils.get(interaction.guild.text_channels, name="Crew-Registration")
+                      
         if not reg_channel:
-            await interaction.followup.send("❌ **Setup Error:** Channel `#crew-registration` not found.", ephemeral=True)
+            await interaction.followup.send("❌ **Setup Error:** Could not find your registration channel. Verify it is named exactly `crew registration` or `crew-registration`.", ephemeral=True)
             return
 
-        # 4. Create the private thread
+        # 5. Create private thread base
         personal_thread = await reg_channel.create_thread(
             name=name,
             auto_archive_duration=4320,
             type=discord.ChannelType.private_thread
         )
 
-        # 5. FIX: Direct raw dictionary insert matching your smashbot.py database structure
+        # 6. UNIVERSAL DB DOCUMENT: Saves both standard types to support older command iterations
         new_crew_data = {
             "name": name,
             "owner_id": user_id,
+            "owner": user_id,
             "leaders": [user_id],
             "members": [user_id]
         }
         await bot.db.crews.insert_one(new_crew_data)
 
-        # 6. Add the user to the thread
+        # 7. Add user and notify
         await personal_thread.add_user(interaction.user)
 
-        # 7. Send onboarding message
         welcome_msg = await personal_thread.send(
             content=f"🏁 **Welcome to your Headquarters, <@{user_id}>!**\n\n"
                     f"⚓ **Crew Name:** {name}\n"
@@ -771,19 +776,18 @@ async def create_crew(interaction: discord.Interaction, name: str):
                     f"This private thread is now officially open."
         )
         
-        # 8. FIX: Try to pin the message, pass safely if bot lacks "Manage Messages" permission
         try:
             await welcome_msg.pin()
         except Exception:
-            print("Warning: Bot missing 'Manage Messages' permission to pin the welcome message.")
+            pass # Keep moving if bot lacks permission
 
-        # 9. Complete the interaction
         await interaction.followup.send(f"✅ **Crew Successfully Formed!** Your locked base is here: <#{personal_thread.id}>", ephemeral=True)
 
     except Exception as e:
-        print(f"CRITICAL ERROR: {e}")
+        # Force print to Render system output stream so it shows up in logs no matter what
+        import sys
+        print(f"!!! CRITICAL CRASH LOG !!!: {e}", file=sys.stderr, flush=True)
         await interaction.followup.send("❌ An operational error occurred while creating your crew. Please check server logs.", ephemeral=True)
-
 
 
 
