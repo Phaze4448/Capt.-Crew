@@ -825,8 +825,9 @@ def home():
     return "SmashBot is online and running!"
 
 def run_web_server():
-    # Render looks for incoming traffic on port 10000 by default
-    app.run(host='0.0.0.0', port=10000)
+    # This automatically reads Render's required port number dynamically
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
 
 # --- KEEP ALL OF YOUR ORIGINAL BOT EXECUTION CODE ---
 if __name__ == "__main__":
