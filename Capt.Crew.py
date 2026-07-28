@@ -830,9 +830,32 @@ async def setcrewbanner(interaction: discord.Interaction, banner_url: str):
 async def setcrewname(interaction: discord.Interaction, new_name: str):
     await interaction.response.send_message(f"✏️ **Branding Profile Upgraded:** Team identity registry swapped over to: **{new_name}**.")
 
-@bot.tree.command(name="disband_crew", description="Permanently delete your crew organization database file folder from the master index.")
+@bot.tree.command(name="disband_crew", description="Permanently delete your crew portfolio and free all roster members.")
 async def disband_crew(interaction: discord.Interaction):
-    await interaction.response.send_message("💥 **Organization Terminated:** Deleted your team portfolio and released all roster members to free agency.")
+    await interaction.response.defer(ephemeral=True)
+    user_id = interaction.user.id
+
+    try:
+        # Find the crew where the execution user is the explicit master owner
+        target_crew = await bot.db.crews.find_one({"owner": user_id})
+
+        if not target_crew:
+            await interaction.followup.send("❌ You do not own a registered crew portfolio.", ephemeral=True)
+            return
+
+        # CRITICAL FIX: Explicitly remove the document tracking the team record matching this specific name
+        delete_result = await bot.db.crews.delete_one({"_id": target_crew["_id"]})
+
+        if delete_result.deleted_count > 0:
+            await interaction.followup.send(
+                "💥 **Organization Terminated:** Deleted your team portfolio and released all roster members to free agency.", 
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send("❌ Error: Database entry could not be removed. Please retry.", ephemeral=True)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Database execution failure: {e}", ephemeral=True)
 
 
 @bot.tree.command(name="free_agents", description="Display a complete dynamic index directory list mapping all un-crewed server free agents.")
