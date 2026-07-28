@@ -3,4 +3,3 @@ motor
 pydantic
 pillow
 aiohttp
-gradio
