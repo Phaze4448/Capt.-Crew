@@ -449,37 +449,6 @@ async def show_card(interaction: discord.Interaction, member: discord.User = Non
 
 # --- DISCORD SLASH COMMAND WRAPPERS ---
 
-@bot.tree.command(name="card", description="Show your official tournament combat profile card.")
-async def show_card(interaction: discord.Interaction, member: discord.User = None):
-    await interaction.response.defer()
-    target_user = member or interaction.user
-    
-    # Query database data records for Gold, Elo metrics, and Cosmetic unlocks
-    profile_record = await bot.db.users.find_one({"_id": target_user.id})
-    crew_record = await bot.db.crews.find_one({"members": target_user.id})
-    
-    # Build default fallbacks if data entry doesn't exist yet
-    gold_balance = profile_record.get("gold", 0) if profile_record else 150
-    elo_rating = crew_record.get("elo", 1000) if crew_record else 1000
-    
-    # Active cosmetic selection maps pulled from shop transactions
-    equipped_fighter = profile_record.get("equipped_fighter", "Mario") if profile_record else "Mario"
-    equipped_stage = profile_record.get("equipped_stage", "Battlefield") if profile_record else "Battlefield"
-    equipped_tint_name = profile_record.get("equipped_tint", "Default Blue") if profile_record else "Default Blue"
-    
-    tint_color_tuple = STAGE_TINTS.get(equipped_tint_name, STAGE_TINTS["Default Blue"])
-
-    # Fire generator engine pipeline
-    card_file = await generate_player_card(
-        username=target_user.name,
-        fighter_name=equipped_fighter,
-        background_name=equipped_stage,
-        tint_rgba=tint_color_tuple,
-        gold_balance=gold_balance,
-        elo=elo_rating
-    )
-    
-    await interaction.followup.send(file=card_file)
 
 
 # =========================================================================
