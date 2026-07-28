@@ -285,17 +285,67 @@ from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import aiohttp
 
 async def generate_player_card(username, fighter_name, background_name, tint_rgba, gold_balance, elo):
-    """Programmatically constructs your server's player profile card asset using Pillow."""
     async with aiohttp.ClientSession() as session:
-        # 1. Fetch Stage Background Resource
+        # 1. Pull preset stage image background with a safe default fallback
         bg_url = STAGE_BACKGROUNDS.get(background_name, STAGE_BACKGROUNDS["Battlefield"])
-        async with session.get(bg_url) as resp:
-            bg_data = await resp.read()
+        try:
+            async with session.get(bg_url) as resp:
+                if resp.status != 200:
+                    raise Exception()
+                bg_data = await resp.read()
+        except:
+            # Absolute baseline safety image if an external URL drops offline
+            async with session.get(STAGE_BACKGROUNDS["Battlefield"]) as resp:
+                bg_data = await resp.read()
+            background_name = "Battlefield"
             
-        # 2. Fetch Fighter Render Resource
-        fighter_url = FIGHTER_IMAGES.get(fighter_name, FIGHTER_IMAGES["Mario"])
-        async with session.get(fighter_url) as resp:
-            fighter_data = await resp.read()
+        # 2. Pull preset fighter character render with a safe default fallback
+        fighter_url = FIGHTER_IMAGES.get(fighter_name, "https://smashbros.com")
+        try:
+            async with session.get(fighter_url) as resp:
+                if resp.status == 200:
+                    fighter_data = await resp.read()
+                else:
+                    raise Exception()
+        except:
+            async with session.get("https://smashbros.com") as resp:
+                fighter_data = await resp.read()
+
+    # Create the graphics canvas layers
+    base_bg = Image.open(io.BytesIO(bg_data)).convert("RGBA").resize((800, 450))
+    fighter_img = Image.open(io.BytesIO(fighter_data)).convert("RGBA")
+    
+    # Proportional scaling calculations
+    fighter_img.thumbnail((400, 400), Image.Resampling.LANCZOS)
+
+    # Blend the custom color overlay tint matrix
+    tint_layer = Image.new("RGBA", base_bg.size, tint_rgba)
+    composited_card = Image.alpha_composite(base_bg, tint_layer)
+
+    # Position fighter transparent graphic on the right side panel
+    fighter_layer = Image.new("RGBA", composited_card.size)
+    fighter_layer.paste(fighter_img, (420, 450 - fighter_img.size[1]), fighter_img)
+    composited_card = Image.alpha_composite(composited_card, fighter_layer)
+
+    # Overlay Typography Text Data using standard system fallback fonts
+    draw = ImageDraw.Draw(composited_card)
+    
+    # CRITICAL FIX: Forces standard system font rendering (Removes .ttf dependency crash loops)
+    font_main = ImageFont.load_default()
+
+    # High-visibility contrast text canvas overlays
+    draw.text((40, 40), f"PLAYER: {username.upper()}", font=font_main, fill=(255, 255, 255, 255))
+    draw.text((40, 80), f"MAIN FIGHTER: {fighter_name}", font=font_main, fill=(220, 220, 220, 255))
+    draw.text((40, 120), f"CREW BATTLE ELO: {elo}", font=font_main, fill=(100, 230, 100, 255))
+    draw.text((40, 360), f"GOLD BALANCE: {gold_balance}G", font=font_main, fill=(255, 215, 0, 255))
+    draw.text((40, 390), f"STAGE PRESET: {background_name}", font=font_main, fill=(200, 200, 200, 255))
+    
+    # Save image to a virtual stream file format for Discord transmission
+    output_buffer = io.BytesIO()
+    composited_card.save(output_buffer, format="PNG")
+    output_buffer.seek(0)
+    return discord.File(fp=output_buffer, filename="smash_player_card.png")
+
 
     # Load images into Pillow canvas layers
     base_bg = Image.open(io.BytesIO(bg_data)).convert("RGBA").resize((800, 450))
