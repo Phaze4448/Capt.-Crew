@@ -241,86 +241,135 @@ from discord.ext import commands
 
 # --- PLACE INSIDE YOUR WIZARD REDIRECT BLOCK ---
 
-@bot.tree.command(name="crewapplication", description="Start an automated private DM onboarding module wizard to form a brand new crew.")
-async def crewapplication(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    user_id = interaction.user.id
-    guild = interaction.guild
+import os
+import discord
+from discord import app_commands, ui
 
-    # 1. Enforce strict single-crew limits upfront
+# 1. Define the Interactive Popup Window Form
+class CrewApplicationModal(ui.Modal, title="🛡️ Register Your Tournament Crew"):
+    # Text input slots that display directly inside the Discord UI window
+    crew_name = ui.TextInput(
+        label="Crew Team Name", 
+        placeholder="e.g., The Horsemen", 
+        required=True, 
+        max_length=32
+    )
+    leaders = ui.TextInput(
+        label="Co-Leaders / Captains (User IDs)", 
+        placeholder="Paste User IDs separated by spaces (Optional)", 
+        required=False,
+        style=discord.TextStyle.long
+    )
+    members = ui.TextInput(
+        label="Roster Members (User IDs)", 
+        placeholder="Paste User IDs separated by spaces (Optional)", 
+        required=False,
+        style=discord.TextStyle.long
+    )
+
+    # 2. This execution loop fires the moment the user clicks the blue "Submit" button
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        user_id = interaction.user.id
+        guild = interaction.guild
+        
+        # Clean up input string data from form variables into structured ID lists
+        def parse_ids(text_input):
+            if not text_input:
+                return []
+            # Split by space or comma, remove empty elements, and convert to numeric clean strings
+            return [chunk.strip() for chunk in text_input.replace(",", " ").split() if chunk.strip().isdigit()]
+
+        captured_crew_name = self.crew_name.value.strip()
+        captured_leaders = parse_ids(self.leaders.value)
+        captured_members = parse_ids(self.members.value)
+
+        try:
+            # 3. Resolve user objects and build invitation mention links cleanly
+            all_participants = list(set([str(user_id)] + captured_leaders + captured_members))
+            roster_mentions = []
+
+            for participant_id in all_participants:
+                try:
+                    member = guild.get_member(int(participant_id)) or await guild.fetch_member(int(participant_id))
+                    if member:
+                        roster_mentions.append(member.mention)
+                        
+                        # Dispatch Paperwork notifications straight to recruits' DMs
+                        if member.id != user_id:
+                            try:
+                                dm_embed = discord.Embed(
+                                    title="⚔️ Crew Roster Notification",
+                                    description=f"You have been officially recruited onto **{captured_crew_name}** by <@{user_id}>!\nHead to your server's new private channel room to check in.",
+                                    color=discord.Color.blue()
+                                )
+                                await member.send(embed=dm_embed)
+                            except discord.Forbidden:
+                                print(f"⚠️ Could not DM user ID {member.id} (DMs Closed).")
+                except Exception as e:
+                    print(f"⚠️ Error resolving user ID {participant_id}: {e}")
+
+            roster_ping_string = " ".join(roster_mentions)
+
+            # 4. Handle future-proof Crew Mod / Staff Role checks
+            staff_mentions = []
+            for role in guild.roles:
+                if role.name.lower() in ["crew mod", "crew admin"] or role.permissions.administrator:
+                    staff_mentions.append(role.mention)
+            staff_ping_string = " ".join(staff_mentions)
+
+            # 5. Build and commit persistent database schema record to MongoDB Atlas
+            await bot.db.crews.insert_one({
+                "name": captured_crew_name,
+                "owner": user_id, 
+                "leaders": list(set([user_id] + [int(i) for i in captured_leaders])), 
+                "members": list(set([user_id] + [int(i) for i in captured_leaders] + [int(i) for i in captured_members])), 
+                "elo": 1000
+            })
+
+            # 6. Create private text container thread
+            thread = await interaction.channel.create_thread(
+                name=f"crew-{captured_crew_name}", 
+                type=discord.ChannelType.private_thread
+            )
+
+            # 7. Format clean welcome message display panel
+            welcome_embed = discord.Embed(
+                title=f"🛡️ Crew Registered: {captured_crew_name}",
+                description=f"Welcome to your private headquarters!\n\n**Owner:** <@{user_id}>",
+                color=discord.Color.green()
+            )
+            welcome_embed.add_field(name="Roster Base", value=roster_ping_string if roster_ping_string else "None Listed", inline=False)
+            await thread.send(embed=welcome_embed)
+
+            # 8. Force notification hook inside thread layer context to pull them inside
+            if roster_ping_string or staff_ping_string:
+                ping_payload = await thread.send(f"🔔 **Notification Hook:** {roster_ping_string} {staff_ping_string}")
+                await ping_payload.delete(delay=2)
+
+            await interaction.followup.send(f"✅ Your crew has been safely created! Head on over to <#{thread.id}>.", ephemeral=True)
+
+        except Exception as err:
+            print(f"❌ Error during submission pipeline execution: {err}")
+            await interaction.followup.send(f"❌ Initialization error occurred: {err}", ephemeral=True)
+
+
+# 3. The primary base slash command endpoint 
+@bot.tree.command(name="crewapplication", description="Start an interactive application form wizard to form a brand new crew.")
+async def crewapplication(interaction: discord.Interaction):
+    user_id = interaction.user.id
+    
+    # Run the strict upstream single-crew portfolio validation guard check
     existing_crew = await bot.db.crews.find_one({
         "$or": [{"owner": user_id}, {"leaders": user_id}, {"members": user_id}]
     })
     
     if existing_crew:
-        await interaction.followup.send(f"❌ You are already in a crew: **{existing_crew['name']}**.", ephemeral=True)
+        await interaction.response.send_message(f"❌ You are already in a crew: **{existing_crew['name']}**.", ephemeral=True)
         return
 
-    # =========================================================================
-    # SIMULATED DM WIZARD CAPTURE
-    # (Replace these dummy variables with your actual DM wizard capture array data)
-    captured_crew_name = "Team Genesis"
-    captured_leaders = [123456789012345678, 234567890123456789]  # Discord User IDs collected
-    captured_members = [345678901234567890, 456789012345678901]  # Discord User IDs collected
-    # =========================================================================
-
-    try:
-        # 2. Dynamically gather Staff/Admin roles to protect against future renames
-        staff_pings = []
-        for role in guild.roles:
-            # Captures Admin/Mod roles dynamically based on permissions, not names
-            if role.permissions.administrator or role.permissions.manage_guild:
-                staff_pings.append(role.mention)
-            # Fallback check if your server uses custom naming structures like "Crew Mod"
-            elif "crew" in role.name.lower() or "mod" in role.name.lower():
-                staff_pings.append(role.mention)
-
-        # Remove duplicate pings cleanly
-        staff_ping_string = " ".join(list(set(staff_pings)))
-
-        # 3. Create the Private Thread inside the active channel context
-        thread = await interaction.channel.create_thread(
-            name=f"crew-{captured_crew_name}", 
-            type=discord.ChannelType.private_thread
-        )
-
-        # 4. Generate user objects and map mentions to build the invitation hook
-        all_invitees = list(set([user_id] + captured_leaders + captured_members))
-        roster_ping_string = " ".join([f"<@{uid}>" for uid in all_invitees])
-
-        # 5. Populate your persistent MongoDB cluster schema
-        await bot.db.crews.insert_one({
-            "name": captured_crew_name,
-            "owner": user_id, 
-            "leaders": list(set([user_id] + captured_leaders)), 
-            "members": list(set([user_id] + captured_leaders + captured_members)), 
-            "elo": 1000
-        })
-
-        # 6. Dispatch the welcome alert inside the private thread
-        # This explicit string forces Discord to add all users to the private context
-        welcome_embed = discord.Embed(
-            title=f"🛡️ Crew Registered: {captured_crew_name}",
-            description=f"Welcome to your private crew headquarters!\n\n**Owner:** <@{user_id}>",
-            color=discord.Color.green()
-        )
-        welcome_embed.add_field(name="Roster Base", value=roster_ping_string, inline=False)
-        
-        # Send the clean panel first
-        await thread.send(embed=welcome_embed)
-
-        # Send the explicit notification ping to bring them into the room
-        ping_message = await thread.send(
-            f"🔔 **Notification Hook:** {roster_ping_string} {staff_ping_string}"
-        )
-        # Optional: Clean up the messy raw string ping afterward to keep text clean
-        await ping_message.delete()
-
-        await interaction.followup.send(f"✅ Your crew has been safely created! Head on over to <#{thread.id}>.", ephemeral=True)
-
-    except Exception as e:
-        print(f"❌ Error during wizard finalization: {e}")
-        await interaction.followup.send(f"❌ Initialization error: {e}", ephemeral=True)
+    # Call and send the clean interactive popup window right on the user's screen
+    await interaction.response.send_modal(CrewApplicationModal())
 
 
 
