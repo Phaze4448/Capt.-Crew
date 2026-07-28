@@ -814,5 +814,30 @@ async def help_referee(interaction: discord.Interaction):
     embed.description = "Core flow chart steps mapping match commands out sequentially for server tournament structures."
     await interaction.response.send_message(embed=embed)
 
+from flask import Flask
+from threading import Thread
+
+# Create a tiny dummy web application
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "SmashBot is online and running!"
+
+def run_web_server():
+    # Render looks for incoming traffic on port 10000 by default
+    app.run(host='0.0.0.0', port=10000)
+
+# --- KEEP ALL OF YOUR ORIGINAL BOT EXECUTION CODE ---
+if __name__ == "__main__":
+    # 1. Start the web server on a separate background thread
+    print("🌐 Starting keep-alive web server...")
+    Thread(target=run_web_server).start()
+
+    # 2. Run your original Discord Bot startup line
+    print("🚀 Connecting to Discord Gateway...")
+    bot.run(os.environ.get("DISCORD_TOKEN"))
+
+
 
 bot.run(BOT_TOKEN)
