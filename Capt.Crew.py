@@ -478,13 +478,97 @@ from PIL import Image, ImageDraw, ImageFont
 
 # 1. Preset Asset Maps (Keeps styling clean and unvetted links out)
 FIGHTER_IMAGES = {
+    # --- BASE ROSTER & SECRETS ---
     "Mario": "https://smashbros.com",
     "Donkey Kong": "https://smashbros.com",
     "Link": "https://smashbros.com",
+    "Samus": "https://smashbros.com",
+    "Dark Samus": "https://smashbros.com",
+    "Yoshi": "https://smashbros.com",
+    "Kirby": "https://smashbros.com",
     "Fox": "https://smashbros.com",
+    "Pikachu": "https://smashbros.com",
+    "Luigi": "https://smashbros.com",
+    "Ness": "https://smashbros.com",
+    "Captain Falcon": "https://smashbros.com",
+    "Jigglypuff": "https://smashbros.com",
+    "Peach": "https://smashbros.com",
+    "Daisy": "https://smashbros.com",
+    "Bowser": "https://smashbros.com",
+    "Ice Climbers": "https://smashbros.com",
+    "Sheik": "https://smashbros.com",
+    "Zelda": "https://smashbros.com",
+    "Dr. Mario": "https://smashbros.com",
+    "Pichu": "https://smashbros.com",
+    "Falco": "https://smashbros.com",
+    "Marth": "https://smashbros.com",
+    "Lucina": "https://smashbros.com",
+    "Young Link": "https://smashbros.com",
+    "Ganondorf": "https://smashbros.com",
+    "Mewtwo": "https://smashbros.com",
+    "Roy": "https://smashbros.com",
+    "Chrom": "https://smashbros.com",
+    "Mr. Game & Watch": "https://smashbros.com",
+    "Meta Knight": "https://smashbros.com",
+    "Pit": "https://smashbros.com",
+    "Dark Pit": "https://smashbros.com",
+    "Zero Suit Samus": "https://smashbros.com",
+    "Wario": "https://smashbros.com",
+    "Snake": "https://smashbros.com",
+    "Ike": "https://smashbros.com",
+    "Pokemon Trainer": "https://smashbros.com",
+    "Diddy Kong": "https://smashbros.com",
+    "Lucas": "https://smashbros.com",
+    "Sonic": "https://smashbros.com",
+    "King Dedede": "https://smashbros.com",
+    "Olimar": "https://smashbros.com",
+    "Lucario": "https://smashbros.com",
+    "ROB": "https://smashbros.com",
+    "Toon Link": "https://smashbros.com",
+    "Wolf": "https://smashbros.com",
+    "Villager": "https://smashbros.com",
+    "Mega Man": "https://smashbros.com",
+    "Wii Fit Trainer": "https://smashbros.com",
+    "Rosalina & Luma": "https://smashbros.com",
+    "Little Mac": "https://smashbros.com",
+    "Greninja": "https://smashbros.com",
+    "Mii Brawler": "https://smashbros.com",
+    "Mii Swordfighter": "https://smashbros.com",
+    "Mii Gunner": "https://smashbros.com",
+    "Palutena": "https://smashbros.com",
+    "Pac-Man": "https://smashbros.com",
+    "Robin": "https://smashbros.com",
+    "Shulk": "https://smashbros.com",
+    "Bowser Jr.": "https://smashbros.com",
+    "Duck Hunt": "https://smashbros.com",
+    "Ryu": "https://smashbros.com",
+    "Ken": "https://smashbros.com",
+    "Cloud": "https://smashbros.com",
+    "Corrin": "https://smashbros.com",
+    "Bayonetta": "https://smashbros.com",
+    "Inkling": "https://smashbros.com",
+    "Ridley": "https://smashbros.com",
+    "Simon": "https://smashbros.com",
+    "Richter": "https://smashbros.com",
+    "King K. Rool": "https://smashbros.com",
+    "Isabelle": "https://smashbros.com",
+    "Incineroar": "https://smashbros.com",
+
+    # --- CHALLENGER PASSES & DLC FIGHTERS ---
+    "Piranha Plant": "https://smashbros.com",
     "Joker": "https://smashbros.com",
-    "Sonic": "https://smashbros.com"
+    "Hero": "https://smashbros.com",
+    "Banjo & Kazooie": "https://smashbros.com",
+    "Terry": "https://smashbros.com",
+    "Byleth": "https://smashbros.com",
+    "Min Min": "https://smashbros.com",
+    "Steve": "https://smashbros.com",
+    "Sephiroth": "https://smashbros.com",
+    "Pyra/Mythra": "https://smashbros.com",
+    "Kazuya": "https://smashbros.com",
+    "Sora": "https://smashbros.com"
 }
+z
 
 STAGE_BACKGROUNDS = {
     "Battlefield": "https://smashbros.com",
@@ -509,7 +593,12 @@ async def generate_player_card(username, fighter_name, background_name, tint_rgb
             bg_data = await resp.read()
             
         # Pull preset fighter character transparent render
-        fighter_url = FIGHTER_IMAGES.get(fighter_name, FIGHTER_IMAGES["Mario"])
+                # Pull preset fighter character transparent render
+        formatted_name = fighter_name.strip().title()
+        if "Pyra" in formatted_name or "Mythra" in formatted_name:
+            formatted_name = "Pyra/Mythra"
+            
+        fighter_url = FIGHTER_IMAGES.get(formatted_name, "https://smashbros.com")
         async with session.get(fighter_url) as resp:
             fighter_data = await resp.read()
 
