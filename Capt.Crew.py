@@ -260,6 +260,158 @@ async def on_message(message: discord.Message):
     await message.channel.send(embed=embed)
 
 
+
+import io
+import discord
+from discord import app_commands
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance
+import aiohttp
+
+async def generate_player_card(username, fighter_name, background_name, tint_rgba, gold_balance, elo):
+    """Programmatically constructs your server's player profile card asset using Pillow."""
+    async with aiohttp.ClientSession() as session:
+        # 1. Fetch Stage Background Resource
+        bg_url = STAGE_BACKGROUNDS.get(background_name, STAGE_BACKGROUNDS["Battlefield"])
+        async with session.get(bg_url) as resp:
+            bg_data = await resp.read()
+            
+        # 2. Fetch Fighter Render Resource
+        fighter_url = FIGHTER_IMAGES.get(fighter_name, FIGHTER_IMAGES["Mario"])
+        async with session.get(fighter_url) as resp:
+            fighter_data = await resp.read()
+
+    # Load images into Pillow canvas layers
+    base_bg = Image.open(io.BytesIO(bg_data)).convert("RGBA").resize((800, 450))
+    fighter_img = Image.open(io.BytesIO(fighter_data)).convert("RGBA")
+    
+    # Scale fighter profile assets proportionally
+    fighter_img.thumbnail((400, 400), Image.Resampling.LANCZOS)
+
+    # 3. Construct and Overlay the Color Tint Layer Mask
+    tint_layer = Image.new("RGBA", base_bg.size, tint_rgba)
+    composited_card = Image.alpha_composite(base_bg, tint_layer)
+
+    # 4. Composite the Transparency-Stripped Fighter Layer
+    # Places fighter on the right side of the canvas bounds
+    fighter_layer = Image.new("RGBA", composited_card.size)
+    fighter_layer.paste(fighter_img, (420, 450 - fighter_img.size[1]), fighter_img)
+    composited_card = Image.alpha_composite(composited_card, fighter_layer)
+
+    # 5. Build Graphic User Interface Metrics (Text Overlays)
+    draw = ImageDraw.Draw(composited_card)
+    try:
+        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
+        font_sub = ImageFont.truetype("DejaVuSans.ttf", 24)
+    except IOError:
+        font_title = ImageFont.load_default()
+        font_sub = ImageFont.load_default()
+
+    # Apply structural typography layout
+    draw.text((40, 40), username.upper(), font=font_title, fill=(255, 255, 255, 255))
+    draw.text((40, 95), f"Main: {fighter_name}", font=font_sub, fill=(220, 220, 220, 255))
+    draw.text((40, 135), f"Arena ELO: {elo}", font=font_sub, fill=(100, 230, 100, 255))
+    draw.text((40, 375), f"💰 Gold Balance: {gold_balance}G", font=font_title, fill=(255, 215, 0, 255))
+    draw.text((40, 415), f"🏟️ Pitch: {background_name}", font=font_sub, fill=(180, 180, 180, 255))
+
+    # Compress file streaming payload array bytes
+    output_buffer = io.BytesIO()
+    composited_card.save(output_buffer, format="PNG")
+    output_buffer.seek(0)
+    return discord.File(fp=output_buffer, filename="smash_player_card.png")
+
+# --- DISCORD SLASH COMMAND WRAPPERS ---
+
+@bot.tree.command(name="card", description="Show your official tournament combat profile card.")
+async def show_card(interaction: discord.Interaction, member: discord.User = None):
+    await interaction.response.defer()
+    target_user = member or interaction.user
+    
+    # Query database data records for Gold, Elo metrics, and Cosmetic unlocks
+    profile_record = await bot.db.users.find_one({"_id": target_user.id})
+    crew_record = await bot.db.crews.find_one({"members": target_user.id})
+    
+    # Build default fallbacks if data entry doesn't exist yet
+    gold_balance = profile_record.get("gold", 0) if profile_record else 150
+    elo_rating = crew_record.get("elo", 1000) if crew_record else 1000
+    
+    # Active cosmetic selection maps pulled from shop transactions
+    equipped_fighter = profile_record.get("equipped_fighter", "Mario") if profile_record else "Mario"
+    equipped_stage = profile_record.get("equipped_stage", "Battlefield") if profile_record else "Battlefield"
+    equipped_tint_name = profile_record.get("equipped_tint", "Default Blue") if profile_record else "Default Blue"
+    
+    tint_color_tuple = STAGE_TINTS.get(equipped_tint_name, STAGE_TINTS["Default Blue"])
+
+    # Fire generator engine pipeline
+    card_file = await generate_player_card(
+        username=target_user.name,
+        fighter_name=equipped_fighter,
+        background_name=equipped_stage,
+        tint_rgba=tint_color_tuple,
+        gold_balance=gold_balance,
+        elo=elo_rating
+    )
+    
+    await interaction.followup.send(file=card_file)
+
+
+@bot.tree.command(name="shop", description="Browse and purchase profile card cosmetics using gold won from crew battles.")
+async def open_shop(interaction: discord.Interaction):
+    # Construct standard inventory offer panels
+    embed = discord.Embed(
+        title="🏪 Tournament Gold Marketplace",
+        description="Spend gold earned from victorious crew battles to upgrade your profile visual themes!",
+        color=discord.Color.gold()
+    )
+    embed.add_field(name="🎨 Tint Overlays (150 Gold each)", value="• `Championship Gold` \n• `Crimson Rage` \n• `Shadow Realm`", inline=False)
+    embed.add_field(name="🏟️ Arena Background Stages (300 Gold each)", value="• `Final Destination` \n• `Smashville` \n• `Pokemon Stadium 2` \n• `Town and City`", inline=False)
+    embed.add_field(name="🛒 How to Purchase", value="Use `/buy <item_name>` to instantly purchase and unlock any item tier.", inline=False)
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@bot.tree.command(name="buy", description="Purchase a cosmetic background or tint from the tournament marketplace.")
+async def buy_item(interaction: discord.Interaction, item_name: str):
+    await interaction.response.defer(ephemeral=True)
+    user_id = interaction.user.id
+    
+    # Standard pricing parameters evaluation lookups
+    item_prices = {
+        "championship gold": 150, "crimson rage": 150, "shadow realm": 150,
+        "final destination": 300, "smashville": 300, "pokemon stadium 2": 300, "town and city": 300
+    }
+    
+    normalized_name = item_name.strip().lower()
+    if normalized_name not in item_prices:
+        await interaction.followup.send("❌ That item is not available in the shop catalog inventory.", ephemeral=True)
+        return
+        
+    cost = item_prices[normalized_name]
+    user_data = await bot.db.users.find_one({"_id": user_id})
+    current_gold = user_data.get("gold", 0) if user_data else 0
+    
+    if current_gold < cost:
+        await interaction.followup.send(f"❌ Transaction declined. You need **{cost}G**, but currently only hold **{current_gold}G**.", ephemeral=True)
+        return
+        
+    # Process inventory insertion array checks
+    unlocked_inventory = user_data.get("unlocked_items", []) if user_data else []
+    if normalized_name in unlocked_inventory:
+        await interaction.followup.send("❌ You already own this cosmetic upgrade asset.", ephemeral=True)
+        return
+
+    # Update database ledger: Deduct currency balances and append inventory asset tracking entries
+    await bot.db.users.update_one(
+        {"_id": user_id},
+        {
+            "$inc": {"gold": -cost},
+            "$push": {"unlocked_items": normalized_name}
+        },
+        upsert=True
+    )
+    
+    await interaction.followup.send(f"🎉 **Purchase Confirmed:** Unlocked **{item_name}**! Use `/equip` to toggle your profile layouts.", ephemeral=True)
+
+
+
 import os
 import discord
 from discord import app_commands
@@ -841,9 +993,92 @@ async def tester(interaction: discord.Interaction, action: str, member: discord.
 async def transferownership(interaction: discord.Interaction, recipient: discord.Member):
     await interaction.response.send_message(f"👑 **Ownership Migration Complete:** Primary administration matrix keys moved safely to <@{recipient.id}>.")
 
-@bot.tree.command(name="shop", description="Access the cosmetic shop marketplace to browse alternative profile card background skins.")
-async def shop(interaction: discord.Interaction):
-    await interaction.response.send_message("🛒 **Cosmetics Marketplace Connected:** Browsing item catalogs for card background overlays.")
+@bot.tree.command(name="shop", description="Browse and purchase profile card cosmetics using gold won from crew battles.")
+async def open_shop(interaction: discord.Interaction):
+    # Construct standard inventory offer panels
+    embed = discord.Embed(
+        title="🏪 Tournament Gold Marketplace",
+        description="Spend gold earned from victorious crew battles to upgrade your profile visual themes!",
+        color=discord.Color.gold()
+    )
+    embed.add_field(name="🎨 Tint Overlays (150 Gold each)", value="• `Championship Gold` \n• `Crimson Rage` \n• `Shadow Realm`", inline=False)
+    embed.add_field(name="🏟️ Arena Background Stages (300 Gold each)", value="• `Final Destination` \n• `Smashville` \n• `Pokemon Stadium 2` \n• `Town and City`", inline=False)
+    embed.add_field(name="🛒 How to Purchase", value="Use `/buy <item_name>` to instantly purchase and unlock any item tier.", inline=False)
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@bot.tree.command(name="buy", description="Purchase a cosmetic background or tint from the tournament marketplace.")
+async def buy_item(interaction: discord.Interaction, item_name: str):
+    await interaction.response.defer(ephemeral=True)
+    user_id = interaction.user.id
+    
+    # Standard pricing parameters evaluation lookups
+    item_prices = {
+        "championship gold": 150, "crimson rage": 150, "shadow realm": 150,
+        "final destination": 300, "smashville": 300, "pokemon stadium 2": 300, "town and city": 300
+    }
+    
+    normalized_name = item_name.strip().lower()
+    if normalized_name not in item_prices:
+        await interaction.followup.send("❌ That item is not available in the shop catalog inventory.", ephemeral=True)
+        return
+        
+    cost = item_prices[normalized_name]
+    user_data = await bot.db.users.find_one({"_id": user_id})
+    current_gold = user_data.get("gold", 0) if user_data else 0
+    
+    if current_gold < cost:
+        await interaction.followup.send(f"❌ Transaction declined. You need **{cost}G**, but currently only hold **{current_gold}G**.", ephemeral=True)
+        return
+        
+    # Process inventory insertion array checks
+    unlocked_inventory = user_data.get("unlocked_items", []) if user_data else []
+    if normalized_name in unlocked_inventory:
+        await interaction.followup.send("❌ You already own this cosmetic upgrade asset.", ephemeral=True)
+        return
+
+    # Update database ledger: Deduct currency balances and append inventory asset tracking entries
+    await bot.db.users.update_one(
+        {"_id": user_id},
+        {
+            "$inc": {"gold": -cost},
+            "$push": {"unlocked_items": normalized_name}
+        },
+        upsert=True
+    )
+    
+    await interaction.followup.send(f"🎉 **Purchase Confirmed:** Unlocked **{item_name}**! Use `/equip` to toggle your profile layouts.", ephemeral=True)
+
+
+@bot.tree.command(name="equip", description="Equip an item from your unlocked inventory collection.")
+async def equip_item(interaction: discord.Interaction, category: str, selection: str):
+    await interaction.response.defer(ephemeral=True)
+    user_id = interaction.user.id
+    
+    # Category sorting configurations maps
+    valid_categories = ["fighter", "stage", "tint"]
+    if category.strip().lower() not in valid_categories:
+        await interaction.followup.send("❌ Invalid category. Choose from: `fighter`, `stage`, or `tint`.", ephemeral=True)
+        return
+        
+    user_data = await bot.db.users.find_one({"_id": user_id})
+    unlocked_inventory = user_data.get("unlocked_items", []) if user_data else []
+    
+    norm_selection = selection.strip().lower()
+    
+    # All baseline vanilla base features are unlocked from day one
+    is_default = selection.strip() in ["Mario", "Battlefield", "Default Blue"]
+    
+    if not is_default and norm_selection not in unlocked_inventory and category.strip().lower() != "fighter":
+        await interaction.followup.send(f"❌ You haven't purchased `{selection}` from the `/shop` yet.", ephemeral=True)
+        return
+        
+    # Write choice state variables dynamically directly down to database fields
+    db_field = f"equipped_{category.strip().lower()}"
+    await bot.db.users.update_one({"_id": user_id}, {"$set": {db_field: selection.strip()}}, upsert=True)
+    
+    await interaction.followup.send(f"✅ Your profile card visual configuration for `{category}` has been updated to **{selection}**!", ephemeral=True)
+
 
 @bot.tree.command(name="setmains", description="Instantly update your primary competitive character fighter choices on your card profile.")
 async def setmains(interaction: discord.Interaction, mains: str):
