@@ -403,6 +403,41 @@ async def generate_player_card(username, fighter_name, background_name, tint_rgb
     output_buffer.seek(0)
     return discord.File(fp=output_buffer, filename="smash_player_card.png")
 
+@bot.tree.command(name="card", description="Show your official tournament combat profile card.")
+async def show_card(interaction: discord.Interaction, member: discord.User = None):
+    await interaction.response.defer()
+    target_user = member or interaction.user
+    
+    # Fetch currency ledger and rank positions from database collections
+    profile_record = await bot.db.users.find_one({"_id": target_user.id})
+    crew_record = await bot.db.crews.find_one({"members": target_user.id})
+    
+    # Assign default fallbacks for unranked or newly registered profiles
+    gold_balance = profile_record.get("gold", 150) if profile_record else 150
+    elo_rating = crew_record.get("elo", 1000) if crew_record else 1000
+    
+    equipped_fighter = profile_record.get("equipped_fighter", "Mario") if profile_record else "Mario"
+    equipped_stage = profile_record.get("equipped_stage", "Battlefield") if profile_record else "Battlefield"
+    equipped_tint_name = profile_record.get("equipped_tint", "Default Blue") if profile_record else "Default Blue"
+    
+    tint_color_tuple = STAGE_TINTS.get(equipped_tint_name, STAGE_TINTS["Default Blue"])
+
+    try:
+        # Run calculation graphic script pipeline
+        card_file = await generate_player_card(
+            username=target_user.name,
+            fighter_name=equipped_fighter,
+            background_name=equipped_stage,
+            tint_rgba=tint_color_tuple,
+            gold_balance=gold_balance,
+            elo=elo_rating
+        )
+        await interaction.followup.send(file=card_file)
+    except Exception as e:
+        print(f"❌ Card Render Error: {e}")
+        await interaction.followup.send("❌ An issue occurred while generating your profile graphics frame.", ephemeral=True)
+
+
 
 # --- DISCORD SLASH COMMAND WRAPPERS ---
 
@@ -439,26 +474,44 @@ async def show_card(interaction: discord.Interaction, member: discord.User = Non
     await interaction.followup.send(file=card_file)
 
 
-@bot.tree.command(name="shop", description="Browse and purchase profile card cosmetics using gold won from crew battles.")
+# =========================================================================
+#                    THE TOURNAMENT MARKETPLACE MODULE
+# =========================================================================
+
+@bot.tree.command(name="shop", description="Browse cosmetic background stages and color tints for your profile card.")
 async def open_shop(interaction: discord.Interaction):
-    # Construct standard inventory offer panels
+    """Displays all available card cosmetics and their gold costs."""
     embed = discord.Embed(
         title="🏪 Tournament Gold Marketplace",
         description="Spend gold earned from victorious crew battles to upgrade your profile visual themes!",
         color=discord.Color.gold()
     )
-    embed.add_field(name="🎨 Tint Overlays (150 Gold each)", value="• `Championship Gold` \n• `Crimson Rage` \n• `Shadow Realm`", inline=False)
-    embed.add_field(name="🏟️ Arena Background Stages (300 Gold each)", value="• `Final Destination` \n• `Smashville` \n• `Pokemon Stadium 2` \n• `Town and City`", inline=False)
-    embed.add_field(name="🛒 How to Purchase", value="Use `/buy <item_name>` to instantly purchase and unlock any item tier.", inline=False)
+    embed.add_field(
+        name="🎨 Tint Overlays (150 Gold each)", 
+        value="• `Championship Gold` \n• `Crimson Rage` \n• `Shadow Realm`", 
+        inline=False
+    )
+    embed.add_field(
+        name="🏟️ Arena Background Stages (300 Gold each)", 
+        value="• `Final Destination` \n• `Smashville` \n• `Pokemon Stadium 2` \n• `Town and City`", 
+        inline=False
+    )
+    embed.add_field(
+        name="🛒 How to Purchase", 
+        value="Use `/buy <item_name>` to instantly purchase and unlock any item tier.", 
+        inline=False
+    )
     
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-@bot.tree.command(name="buy", description="Purchase a cosmetic background or tint from the tournament marketplace.")
+
+@bot.tree.command(name="buy", description="Purchase a card cosmetic using your accumulated crew battle gold.")
 async def buy_item(interaction: discord.Interaction, item_name: str):
+    """Processes cosmetic transactions and updates the user's MongoDB profile ledger."""
     await interaction.response.defer(ephemeral=True)
     user_id = interaction.user.id
     
-    # Standard pricing parameters evaluation lookups
+    # Standard pricing lookup catalog
     item_prices = {
         "championship gold": 150, "crimson rage": 150, "shadow realm": 150,
         "final destination": 300, "smashville": 300, "pokemon stadium 2": 300, "town and city": 300
@@ -466,24 +519,29 @@ async def buy_item(interaction: discord.Interaction, item_name: str):
     
     normalized_name = item_name.strip().lower()
     if normalized_name not in item_prices:
-        await interaction.followup.send("❌ That item is not available in the shop catalog inventory.", ephemeral=True)
+        await interaction.followup.send("❌ That item is not available in the shop catalog.", ephemeral=True)
         return
         
     cost = item_prices[normalized_name]
+    
+    # Query current user's profile wallet balance
     user_data = await bot.db.users.find_one({"_id": user_id})
     current_gold = user_data.get("gold", 0) if user_data else 0
     
     if current_gold < cost:
-        await interaction.followup.send(f"❌ Transaction declined. You need **{cost}G**, but currently only hold **{current_gold}G**.", ephemeral=True)
+        await interaction.followup.send(
+            f"❌ Transaction declined. You need **{cost}G**, but you currently only hold **{current_gold}G**.", 
+            ephemeral=True
+        )
         return
         
-    # Process inventory insertion array checks
+    # Check if they already own it
     unlocked_inventory = user_data.get("unlocked_items", []) if user_data else []
     if normalized_name in unlocked_inventory:
-        await interaction.followup.send("❌ You already own this cosmetic upgrade asset.", ephemeral=True)
+        await interaction.followup.send("❌ You already own this cosmetic upgrade.", ephemeral=True)
         return
 
-    # Update database ledger: Deduct currency balances and append inventory asset tracking entries
+    # Deduct gold and add the item to their inventory array in MongoDB Atlas
     await bot.db.users.update_one(
         {"_id": user_id},
         {
@@ -493,8 +551,10 @@ async def buy_item(interaction: discord.Interaction, item_name: str):
         upsert=True
     )
     
-    await interaction.followup.send(f"🎉 **Purchase Confirmed:** Unlocked **{item_name}**! Use `/equip` to toggle your profile layouts.", ephemeral=True)
-
+    await interaction.followup.send(
+        f"🎉 **Purchase Confirmed:** Unlocked **{item_name}**! Use `/equip` to update your profile card layout.", 
+        ephemeral=True
+    )
 
 
 import os
@@ -1077,62 +1137,6 @@ async def tester(interaction: discord.Interaction, action: str, member: discord.
 @bot.tree.command(name="transferownership", description="Securely pass full structural control flags of the crew entity over to a teammate.")
 async def transferownership(interaction: discord.Interaction, recipient: discord.Member):
     await interaction.response.send_message(f"👑 **Ownership Migration Complete:** Primary administration matrix keys moved safely to <@{recipient.id}>.")
-
-@bot.tree.command(name="shop", description="Browse and purchase profile card cosmetics using gold won from crew battles.")
-async def open_shop(interaction: discord.Interaction):
-    # Construct standard inventory offer panels
-    embed = discord.Embed(
-        title="🏪 Tournament Gold Marketplace",
-        description="Spend gold earned from victorious crew battles to upgrade your profile visual themes!",
-        color=discord.Color.gold()
-    )
-    embed.add_field(name="🎨 Tint Overlays (150 Gold each)", value="• `Championship Gold` \n• `Crimson Rage` \n• `Shadow Realm`", inline=False)
-    embed.add_field(name="🏟️ Arena Background Stages (300 Gold each)", value="• `Final Destination` \n• `Smashville` \n• `Pokemon Stadium 2` \n• `Town and City`", inline=False)
-    embed.add_field(name="🛒 How to Purchase", value="Use `/buy <item_name>` to instantly purchase and unlock any item tier.", inline=False)
-    
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-@bot.tree.command(name="buy", description="Purchase a cosmetic background or tint from the tournament marketplace.")
-async def buy_item(interaction: discord.Interaction, item_name: str):
-    await interaction.response.defer(ephemeral=True)
-    user_id = interaction.user.id
-    
-    # Standard pricing parameters evaluation lookups
-    item_prices = {
-        "championship gold": 150, "crimson rage": 150, "shadow realm": 150,
-        "final destination": 300, "smashville": 300, "pokemon stadium 2": 300, "town and city": 300
-    }
-    
-    normalized_name = item_name.strip().lower()
-    if normalized_name not in item_prices:
-        await interaction.followup.send("❌ That item is not available in the shop catalog inventory.", ephemeral=True)
-        return
-        
-    cost = item_prices[normalized_name]
-    user_data = await bot.db.users.find_one({"_id": user_id})
-    current_gold = user_data.get("gold", 0) if user_data else 0
-    
-    if current_gold < cost:
-        await interaction.followup.send(f"❌ Transaction declined. You need **{cost}G**, but currently only hold **{current_gold}G**.", ephemeral=True)
-        return
-        
-    # Process inventory insertion array checks
-    unlocked_inventory = user_data.get("unlocked_items", []) if user_data else []
-    if normalized_name in unlocked_inventory:
-        await interaction.followup.send("❌ You already own this cosmetic upgrade asset.", ephemeral=True)
-        return
-
-    # Update database ledger: Deduct currency balances and append inventory asset tracking entries
-    await bot.db.users.update_one(
-        {"_id": user_id},
-        {
-            "$inc": {"gold": -cost},
-            "$push": {"unlocked_items": normalized_name}
-        },
-        upsert=True
-    )
-    
-    await interaction.followup.send(f"🎉 **Purchase Confirmed:** Unlocked **{item_name}**! Use `/equip` to toggle your profile layouts.", ephemeral=True)
 
 
 @bot.tree.command(name="equip", description="Equip an item from your unlocked inventory collection.")
