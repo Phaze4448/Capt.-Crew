@@ -23,6 +23,32 @@ async def run_web():
     site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 10000)))
     await site.start()
 
+# Preset Assets Dictionary Configuration Maps
+FIGHTER_IMAGES = {
+    "Mario": "https://smashbros.com",
+    "Donkey Kong": "https://smashbros.com",
+    "Link": "https://smashbros.com",
+    "Fox": "https://smashbros.com",
+    "Joker": "https://smashbros.com",
+    # Populate matching strings directly from your script's existing CHARACTER_POOL
+}
+
+STAGE_BACKGROUNDS = {
+    "Battlefield": "https://smashbros.com",
+    "Final Destination": "https://smashbros.com",
+    "Smashville": "https://smashbros.com",
+    "Pokemon Stadium 2": "https://smashbros.com",
+    "Town and City": "https://smashbros.com"
+}
+
+STAGE_TINTS = {
+    "Default Blue": (40, 60, 120, 140),     # RGBA Tint layers
+    "Championship Gold": (180, 140, 20, 130),
+    "Crimson Rage": (150, 20, 20, 140),
+    "Shadow Realm": (20, 10, 40, 180)
+}
+
+
 CHARACTER_POOL = [
     "Mario", "Donkey Kong", "Link", "Samus", "Dark Samus", "Yoshi", "Kirby", "Fox", "Pikachu", "Luigi",
     "Ness", "Captain Falcon", "Jigglypuff", "Peach", "Daisy", "Bowser", "Ice Climbers", "Sheik", "Zelda",
