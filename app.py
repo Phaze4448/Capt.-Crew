@@ -814,4 +814,48 @@ async def help_referee(interaction: discord.Interaction):
     embed.description = "Core flow chart steps mapping match commands out sequentially for server tournament structures."
     await interaction.response.send_message(embed=embed)
 
+import os
+import asyncio
+import threading
+import gradio as gr
+
+# --- KEEP ALL OF YOUR EXISTING DISCORD BOT SETUP CODE ABOVE THIS LINE ---
+
+def run_discord_bot():
+    """Runs the Discord bot event loop on a dedicated background thread."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # Fetch your secure token from Hugging Face Secrets
+    token = os.environ.get("DISCORD_TOKEN")
+    
+    if not token:
+        print("❌ CRITICAL ERROR: 'DISCORD_TOKEN' environment secret is missing!")
+        return
+        
+    try:
+        loop.run_until_complete(bot.start(token))
+    except Exception as e:
+        print(f"❌ Discord Gateway Error: {e}")
+
+if __name__ == "__main__":
+    # 1. Spin up the Discord bot connection on a background thread
+    print("🚀 Starting background Discord bot thread...")
+    bot_thread = threading.Thread(target=run_discord_bot, daemon=True)
+    bot_thread.start()
+
+    # 2. Launch the required frontend web page to keep Hugging Face happy
+    print("🌐 Launching Gradio status panel on port 7860...")
+    status_page = gr.Interface(
+        fn=lambda name: f"Hello {name}! SmashBot is fully active and connecting to Discord.",
+        inputs=gr.Textbox(placeholder="Enter your name..."),
+        outputs="text",
+        title="🤖 SmashBot Server Console",
+        description="This interface keeps the background Discord process alive 24/7 on free hosting tiers."
+    )
+    
+    # Hugging Face explicitly listens to container port 7860
+    status_page.launch(server_name="0.0.0.0", server_port=7860)
+
+
 bot.run(BOT_TOKEN)
