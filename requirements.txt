@@ -3,3 +3,4 @@ motor
 pydantic
 pillow
 aiohttp
+flask
