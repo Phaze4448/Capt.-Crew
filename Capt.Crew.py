@@ -234,6 +234,95 @@ async def on_message(message: discord.Message):
     await message.channel.send(embed=embed)
 
 
+import os
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+# --- PLACE INSIDE YOUR WIZARD REDIRECT BLOCK ---
+
+@bot.tree.command(name="crewapplication", description="Start an automated private DM onboarding module wizard to form a brand new crew.")
+async def crewapplication(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    user_id = interaction.user.id
+    guild = interaction.guild
+
+    # 1. Enforce strict single-crew limits upfront
+    existing_crew = await bot.db.crews.find_one({
+        "$or": [{"owner": user_id}, {"leaders": user_id}, {"members": user_id}]
+    })
+    
+    if existing_crew:
+        await interaction.followup.send(f"❌ You are already in a crew: **{existing_crew['name']}**.", ephemeral=True)
+        return
+
+    # =========================================================================
+    # SIMULATED DM WIZARD CAPTURE
+    # (Replace these dummy variables with your actual DM wizard capture array data)
+    captured_crew_name = "Team Genesis"
+    captured_leaders = [123456789012345678, 234567890123456789]  # Discord User IDs collected
+    captured_members = [345678901234567890, 456789012345678901]  # Discord User IDs collected
+    # =========================================================================
+
+    try:
+        # 2. Dynamically gather Staff/Admin roles to protect against future renames
+        staff_pings = []
+        for role in guild.roles:
+            # Captures Admin/Mod roles dynamically based on permissions, not names
+            if role.permissions.administrator or role.permissions.manage_guild:
+                staff_pings.append(role.mention)
+            # Fallback check if your server uses custom naming structures like "Crew Mod"
+            elif "crew" in role.name.lower() or "mod" in role.name.lower():
+                staff_pings.append(role.mention)
+
+        # Remove duplicate pings cleanly
+        staff_ping_string = " ".join(list(set(staff_pings)))
+
+        # 3. Create the Private Thread inside the active channel context
+        thread = await interaction.channel.create_thread(
+            name=f"crew-{captured_crew_name}", 
+            type=discord.ChannelType.private_thread
+        )
+
+        # 4. Generate user objects and map mentions to build the invitation hook
+        all_invitees = list(set([user_id] + captured_leaders + captured_members))
+        roster_ping_string = " ".join([f"<@{uid}>" for uid in all_invitees])
+
+        # 5. Populate your persistent MongoDB cluster schema
+        await bot.db.crews.insert_one({
+            "name": captured_crew_name,
+            "owner": user_id, 
+            "leaders": list(set([user_id] + captured_leaders)), 
+            "members": list(set([user_id] + captured_leaders + captured_members)), 
+            "elo": 1000
+        })
+
+        # 6. Dispatch the welcome alert inside the private thread
+        # This explicit string forces Discord to add all users to the private context
+        welcome_embed = discord.Embed(
+            title=f"🛡️ Crew Registered: {captured_crew_name}",
+            description=f"Welcome to your private crew headquarters!\n\n**Owner:** <@{user_id}>",
+            color=discord.Color.green()
+        )
+        welcome_embed.add_field(name="Roster Base", value=roster_ping_string, inline=False)
+        
+        # Send the clean panel first
+        await thread.send(embed=welcome_embed)
+
+        # Send the explicit notification ping to bring them into the room
+        ping_message = await thread.send(
+            f"🔔 **Notification Hook:** {roster_ping_string} {staff_ping_string}"
+        )
+        # Optional: Clean up the messy raw string ping afterward to keep text clean
+        await ping_message.delete()
+
+        await interaction.followup.send(f"✅ Your crew has been safely created! Head on over to <#{thread.id}>.", ephemeral=True)
+
+    except Exception as e:
+        print(f"❌ Error during wizard finalization: {e}")
+        await interaction.followup.send(f"❌ Initialization error: {e}", ephemeral=True)
+
+
 
 @bot.tree.command(name="start_battle", description="Initialize an official competitive crew battle in a brand new dedicated text channel.")
 async def start_battle(interaction: discord.Interaction, opponent_crew: str):
@@ -525,10 +614,6 @@ async def history(interaction: discord.Interaction, crew_name: str):
 async def record(interaction: discord.Interaction, crew_name: str):
     await interaction.response.send_message(f"🗂️ **Database Record Query:** Compiling metric historical spreadsheets for **{crew_name}**.")
 
-@bot.tree.command(name="crewapplication", description="Start an automated private DM onboarding module wizard to form a brand new crew.")
-async def crewapplication(interaction: discord.Interaction):
-    await interaction.response.send_message("📬 Onboarding file package delivered! Please check your private DMs to start your creation wizard application process.", ephemeral=True)
-
 @bot.tree.command(name="recruit", description="Issue a formal server invite verification token for a player to join your crew.")
 async def recruit(interaction: discord.Interaction, target: discord.Member):
     await interaction.response.send_message(f"✉️ **Roster Invite Dispatched:** Sent recruitment verification paperwork token layout routing to <@{target.id}>.")
@@ -712,40 +797,6 @@ async def setcrewlogo(interaction: discord.Interaction, logo_url: str):
 @bot.tree.command(name="substitute", description="Swap a player asset registry mid-battle if an active teammate steps out of loop paths.")
 async def substitute(interaction: discord.Interaction, player_out: discord.Member, player_in: discord.Member):
     await interaction.response.send_message(f"🔄 **Roster Substitution Logged:** Pulling out <@{player_out.id}> and path routing <@{player_in.id}> into live arena loops.")
-
-@bot.tree.command(name="create_crew", description="Register a new crew team under a strict single-ownership limit.")
-async def create_crew(interaction: discord.Interaction, name: str):
-    await interaction.response.defer(ephemeral=True)
-    user_id = interaction.user.id
-    
-    try:
-        # 1. Look for ANY existing crew where this user is already involved
-        existing_crew = await bot.db.crews.find_one({
-            "$or": [{"owner": user_id}, {"leaders": user_id}, {"members": user_id}]
-        })
-        
-        if existing_crew:
-            await interaction.followup.send(f"❌ You are already in a crew: **{existing_crew['name']}**.", ephemeral=True)
-            return
-
-        # 2. Check for duplicate team name
-        if await bot.db.crews.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}}):
-            await interaction.followup.send("❌ Crew name already taken.", ephemeral=True)
-            return
-
-        # 3. Create thread, 4. Insert data into DB ensuring strict 1-crew limit
-        thread = await interaction.channel.create_thread(name=f"crew-{name}", type=discord.ChannelType.private_thread)
-        await bot.db.crews.insert_one({
-            "name": name,
-            "owner": user_id, 
-            "leaders": [user_id], 
-            "members": [user_id], 
-            "elo": 1000
-        })
-        await interaction.followup.send(f"✅ Created! <#{thread.id}>", ephemeral=True)
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
 
 
 @bot.tree.command(name="force_win", description="Staff Override: Instantly award the active match victory to a specific crew team.")
