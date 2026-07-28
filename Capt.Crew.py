@@ -716,17 +716,10 @@ async def start_battle(interaction: discord.Interaction, opponent_crew: str):
 
 @bot.tree.command(name="forcesync", description="Admin Only: Instantly purge caches and rebuild application command menus.")
 async def forcesync(interaction: discord.Interaction):
-    # Restricts this execution strictly to you (the developer owner)
-    if interaction.user.id != 123456789012345678:  # Replace with your actual user ID
+    # CHANGE THIS NUMBER to your actual Discord User ID
+    if interaction.user.id != 503657385419407360:  
         await interaction.response.send_message("❌ Access Denied.", ephemeral=True)
         return
-        
-    await interaction.response.defer(ephemeral=True)
-    try:
-        await bot.tree.sync(guild=interaction.guild)
-        await interaction.followup.send("⚡ Menu tree compiled successfully! Check your command bar.", ephemeral=True)
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error during manual sync execution: {e}", ephemeral=True)
 
 
 
