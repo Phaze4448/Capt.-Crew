@@ -328,6 +328,82 @@ async def generate_player_card(username, fighter_name, background_name, tint_rgb
     output_buffer.seek(0)
     return discord.File(fp=output_buffer, filename="smash_player_card.png")
 
+import io
+import aiohttp
+from PIL import Image, ImageDraw, ImageFont
+
+# 1. Preset Asset Maps (Keeps styling clean and unvetted links out)
+FIGHTER_IMAGES = {
+    "Mario": "https://smashbros.com",
+    "Donkey Kong": "https://smashbros.com",
+    "Link": "https://smashbros.com",
+    "Fox": "https://smashbros.com",
+    "Joker": "https://smashbros.com",
+    "Sonic": "https://smashbros.com"
+}
+
+STAGE_BACKGROUNDS = {
+    "Battlefield": "https://smashbros.com",
+    "Final Destination": "https://smashbros.com",
+    "Smashville": "https://smashbros.com",
+    "Pokemon Stadium 2": "https://smashbros.com"
+}
+
+STAGE_TINTS = {
+    "Default Blue": (40, 60, 120, 140),
+    "Championship Gold": (180, 140, 20, 130),
+    "Crimson Rage": (150, 20, 20, 140),
+    "Shadow Realm": (20, 10, 40, 180)
+}
+
+# 2. The Core Pillow Drawing Function
+async def generate_player_card(username, fighter_name, background_name, tint_rgba, gold_balance, elo):
+    async with aiohttp.ClientSession() as session:
+        # Pull preset stage image background
+        bg_url = STAGE_BACKGROUNDS.get(background_name, STAGE_BACKGROUNDS["Battlefield"])
+        async with session.get(bg_url) as resp:
+            bg_data = await resp.read()
+            
+        # Pull preset fighter character transparent render
+        fighter_url = FIGHTER_IMAGES.get(fighter_name, FIGHTER_IMAGES["Mario"])
+        async with session.get(fighter_url) as resp:
+            fighter_data = await resp.read()
+
+    # Create the graphics canvas layers
+    base_bg = Image.open(io.BytesIO(bg_data)).convert("RGBA").resize((800, 450))
+    fighter_img = Image.open(io.BytesIO(fighter_data)).convert("RGBA")
+    fighter_img.thumbnail((400, 400), Image.Resampling.LANCZOS)
+
+    # Blend the custom color overlay tint matrix
+    tint_layer = Image.new("RGBA", base_bg.size, tint_rgba)
+    composited_card = Image.alpha_composite(base_bg, tint_layer)
+
+    # Position fighter transparent graphic on the right side panel
+    fighter_layer = Image.new("RGBA", composited_card.size)
+    fighter_layer.paste(fighter_img, (420, 450 - fighter_img.size[1]), fighter_img)
+    composited_card = Image.alpha_composite(composited_card, fighter_layer)
+
+    # Overlay Typography Text Data
+    draw = ImageDraw.Draw(composited_card)
+    try:
+        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
+        font_sub = ImageFont.truetype("DejaVuSans.ttf", 24)
+    except IOError:
+        font_title = ImageFont.load_default()
+        font_sub = ImageFont.load_default()
+
+    draw.text((40, 40), username.upper(), font=font_title, fill=(255, 255, 255, 255))
+    draw.text((40, 95), f"Main Fighter: {fighter_name}", font=font_sub, fill=(220, 220, 220, 255))
+    draw.text((40, 135), f"Crew Battle ELO: {elo}", font=font_sub, fill=(100, 230, 100, 255))
+    draw.text((40, 365), f"💰 Gold: {gold_balance}G", font=font_title, fill=(255, 215, 0, 255))
+    
+    # Save image to a virtual stream file format for Discord transmission
+    output_buffer = io.BytesIO()
+    composited_card.save(output_buffer, format="PNG")
+    output_buffer.seek(0)
+    return discord.File(fp=output_buffer, filename="smash_player_card.png")
+
+
 # --- DISCORD SLASH COMMAND WRAPPERS ---
 
 @bot.tree.command(name="card", description="Show your official tournament combat profile card.")
