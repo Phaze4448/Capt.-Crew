@@ -127,15 +127,24 @@ class SmashBot(discord.Client):
 bot = SmashBot()
 
 @bot.event
-async def on_ready(): print(f"Logged in as {bot.user.name}!")
+async def on_ready():
+    print(f"Logged in as {bot.user.name}")
+    
+    # PASTE YOUR ACTUAL SERVER (GUILD) ID HERE
+    TEST_GUILD = discord.Object(id=123456789012345678) 
+    
+    try:
+        print("🔄 Copying global tree to testing server...")
+        # Copies all commands directly into this specific server's fast-track menu
+        bot.tree.copy_global_to(guild=TEST_GUILD)
+        
+        print("⚡ Forcing instant server sync...")
+        await bot.tree.sync(guild=TEST_GUILD)
+        print("✅ Commands are now live and visible in your testing server!")
+        
+    except Exception as e:
+        print(f"❌ Failed to sync: {e}")
 
-async def get_or_create_profile(user_id: int) -> dict:
-    profile = await bot.db.players.find_one({"user_id": user_id})
-    if not profile:
-        new_p = PlayerProfile(user_id=user_id)
-        await bot.db.players.insert_one(new_p.model_dump())
-        return new_p.model_dump()
-    return profile
 
 @bot.event
 async def on_message(message: discord.Message):
