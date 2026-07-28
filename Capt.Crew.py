@@ -128,22 +128,30 @@ bot = SmashBot()
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name}")
-    
-    # PASTE YOUR ACTUAL SERVER (GUILD) ID HERE
-    TEST_GUILD = discord.Object(id=123456789012345678) 
+    print(f"📡 Logged in as: {bot.user.name}")
+    await bot.change_presence(activity=discord.Game(name="SSBU Crew Battles"))
+
+    # 1. Put your actual Discord Server (Guild) ID here
+    YOUR_SERVER_ID = 123456789012345678  
+    target_guild = discord.Object(id=YOUR_SERVER_ID)
     
     try:
-        print("🔄 Copying global tree to testing server...")
-        # Copies all commands directly into this specific server's fast-track menu
-        bot.tree.copy_global_to(guild=TEST_GUILD)
+        # 2. Clear out any legacy server-bound command caches
+        bot.tree.clear_commands(guild=target_guild)
         
-        print("⚡ Forcing instant server sync...")
-        await bot.tree.sync(guild=TEST_GUILD)
-        print("✅ Commands are now live and visible in your testing server!")
+        # 3. Clone every command in your script directly to this server
+        bot.tree.copy_global_to(guild=target_guild)
+        
+        # 4. Fire the synchronization protocol
+        synced = await bot.tree.sync(guild=target_guild)
+        print(f"⚡ Instant Sync: {len(synced)} commands are now live in your server!")
+        
+        # 5. Background global fallback sync (takes 1-2 hours but registers elsewhere)
+        await bot.tree.sync()
+        print("🌐 Global background fallback sync complete.")
         
     except Exception as e:
-        print(f"❌ Failed to sync: {e}")
+        print(f"❌ Synchronization failure: {e}")
 
 
 @bot.event
@@ -737,6 +745,22 @@ async def start_battle(interaction: discord.Interaction, opponent_crew: str):
     await battle_channel.send(embed=embed)
 
 
+@bot.tree.command(name="forcesync", description="Admin Only: Instantly purge caches and rebuild application command menus.")
+async def forcesync(interaction: discord.Interaction):
+    # Restricts this execution strictly to you (the developer owner)
+    if interaction.user.id != 123456789012345678:  # Replace with your actual user ID
+        await interaction.response.send_message("❌ Access Denied.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await bot.tree.sync(guild=interaction.guild)
+        await interaction.followup.send("⚡ Menu tree compiled successfully! Check your command bar.", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error during manual sync execution: {e}", ephemeral=True)
+
+
+
 @bot.tree.command(name="mock", description="Instantly launch a casual practice mock match environment.")
 async def mock(interaction: discord.Interaction, team_a: str, team_b: str):
     battle = ActiveBattle(
@@ -1229,10 +1253,11 @@ async def setcrewbanner(interaction: discord.Interaction, banner_url: str):
 async def setcrewname(interaction: discord.Interaction, new_name: str):
     await interaction.response.send_message(f"✏️ **Branding Profile Upgraded:** Team identity registry swapped over to: **{new_name}**.")
 
-@bot.tree.command(name="disband_crew", description="Permanently delete your crew portfolio and free all roster members.")
+@bot.tree.command(name="disband_crew", description="Permanently delete your crew portfolio, delete its channel, and free all members.")
 async def disband_crew(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     user_id = interaction.user.id
+    guild = interaction.guild
 
     try:
         # Find the crew where the execution user is the explicit master owner
@@ -1242,18 +1267,36 @@ async def disband_crew(interaction: discord.Interaction):
             await interaction.followup.send("❌ You do not own a registered crew portfolio.", ephemeral=True)
             return
 
-        # CRITICAL FIX: Explicitly remove the document tracking the team record matching this specific name
+        crew_name = target_crew["name"]
+
+        # --- NEW THREAD DELETION ENGINE LOCKS ---
+        # Look for the crew's private channel thread inside the server active arrays
+        # This scans threads under the channel where the command was run
+        for thread in interaction.channel.threads:
+            if thread.name.lower() == f"crew-{crew_name.lower()}":
+                try:
+                    await thread.delete()
+                    print(f"🗑️ Successfully deleted thread channel: crew-{crew_name}")
+                except discord.Forbidden:
+                    print(f"⚠️ Permissions Error: Bot lacks Manage Threads privilege to delete crew-{crew_name}.")
+                except discord.NotFound:
+                    pass
+                break # Found and handled, break the thread lookup loop
+        # ----------------------------------------
+
+        # Explicitly remove the document tracking the team record matching this specific id
         delete_result = await bot.db.crews.delete_one({"_id": target_crew["_id"]})
 
         if delete_result.deleted_count > 0:
             await interaction.followup.send(
-                "💥 **Organization Terminated:** Deleted your team portfolio and released all roster members to free agency.", 
+                f"💥 **Organization Terminated:** Deleted **{crew_name}**, purged its private text thread, and released all roster members to free agency.", 
                 ephemeral=True
             )
         else:
             await interaction.followup.send("❌ Error: Database entry could not be removed. Please retry.", ephemeral=True)
 
     except Exception as e:
+        print(f"❌ Disband command failure: {e}")
         await interaction.followup.send(f"❌ Database execution failure: {e}", ephemeral=True)
 
 
