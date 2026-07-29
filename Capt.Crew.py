@@ -567,7 +567,6 @@ FIGHTER_IMAGES = {
     "Kazuya": "https://smashbros.com",
     "Sora": "https://smashbros.com"
 }
-z
 
 STAGE_BACKGROUNDS = {
     "Battlefield": "https://smashbros.com",
