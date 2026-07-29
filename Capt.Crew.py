@@ -639,22 +639,37 @@ async def show_card(interaction: discord.Interaction, member: discord.User = Non
     await interaction.response.defer()
     target_user = member or interaction.user
     
-    # Fetch currency ledger and rank positions from database collections
-    profile_record = await bot.db.users.find_one({"_id": target_user.id})
-    crew_record = await bot.db.crews.find_one({"members": target_user.id})
-    
-    # Assign default fallbacks for unranked or newly registered profiles
-    gold_balance = profile_record.get("gold", 150) if profile_record else 150
-    elo_rating = crew_record.get("elo", 1000) if crew_record else 1000
-    
-    equipped_fighter = profile_record.get("equipped_fighter", "Mario") if profile_record else "Mario"
-    equipped_stage = profile_record.get("equipped_stage", "Battlefield") if profile_record else "Battlefield"
-    equipped_tint_name = profile_record.get("equipped_tint", "Default Blue") if profile_record else "Default Blue"
-    
-    tint_color_tuple = STAGE_TINTS.get(equipped_tint_name, STAGE_TINTS["Default Blue"])
-
     try:
-        # Run calculation graphic script pipeline
+        # 1. Fetch user data records from MongoDB Atlas
+        profile_record = await bot.db.users.find_one({"_id": target_user.id})
+        crew_record = await bot.db.crews.find_one({"members": target_user.id})
+        
+        # 2. Strict sanitation: Ensure nothing is None or an invalid type
+        gold_balance = 150
+        if profile_record and "gold" in profile_record and profile_record["gold"] is not None:
+            gold_balance = int(profile_record["gold"])
+            
+        elo_rating = 1000
+        if crew_record and "elo" in crew_record and crew_record["elo"] is not None:
+            elo_rating = int(crew_record["elo"])
+        
+        # Pull layout strings with strict vanilla fallbacks
+        equipped_fighter = "Mario"
+        if profile_record and profile_record.get("equipped_fighter"):
+            equipped_fighter = str(profile_record["equipped_fighter"]).strip()
+            
+        equipped_stage = "Battlefield"
+        if profile_record and profile_record.get("equipped_stage"):
+            equipped_stage = str(profile_record["equipped_stage"]).strip()
+            
+        equipped_tint_name = "Default Blue"
+        if profile_record and profile_record.get("equipped_tint"):
+            equipped_tint_name = str(profile_record["equipped_tint"]).strip()
+        
+        # Fetch the RGBA tuple map safely
+        tint_color_tuple = STAGE_TINTS.get(equipped_tint_name, STAGE_TINTS["Default Blue"])
+
+        # 3. Fire the image generator engine
         card_file = await generate_player_card(
             username=target_user.name,
             fighter_name=equipped_fighter,
@@ -663,14 +678,15 @@ async def show_card(interaction: discord.Interaction, member: discord.User = Non
             gold_balance=gold_balance,
             elo=elo_rating
         )
+        
+        # Send the file!
         await interaction.followup.send(file=card_file)
+        
     except Exception as e:
-        print(f"❌ Card Render Error: {e}")
-        await interaction.followup.send("❌ An issue occurred while generating your profile graphics frame.", ephemeral=True)
+        # This will print the EXACT error to your Render log console so we can see it!
+        print(f"❌ CRITICAL CARD EXECUTION ERROR: {e}")
+        await interaction.followup.send("❌ An unexpected error occurred while compiling your user metrics.", ephemeral=True)
 
-
-
-# --- DISCORD SLASH COMMAND WRAPPERS ---
 
 
 
