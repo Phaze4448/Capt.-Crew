@@ -231,7 +231,7 @@ async def on_ready():
     bot.db = client["smash_crew_db"]
 
     # This is your existing line 227:
-    print(f"📡 Logged in as: {bot.user.name}")
+    print(f"📡 Logged in as: {bot.user}")
     await bot.change_presence(activity=discord.Game(name="SSBU Crew Battles"))
 
     # 1. Put your actual Discord Server (Guild) ID here
