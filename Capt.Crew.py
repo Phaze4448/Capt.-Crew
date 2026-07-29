@@ -705,6 +705,12 @@ async def show_card(interaction: discord.Interaction, member: discord.User = Non
         print(f"❌ CRITICAL CARD EXECUTION ERROR: {e}")
         await interaction.followup.send("❌ An unexpected error occurred while compiling your user metrics.", ephemeral=True)
 
+        
+    except Exception as e:
+        # This will print the EXACT error to your Render log console so we can see it!
+        print(f"❌ CRITICAL CARD EXECUTION ERROR: {e}")
+        await interaction.followup.send("❌ An unexpected error occurred while compiling your user metrics.", ephemeral=True)
+
 
 
 
