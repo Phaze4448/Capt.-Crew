@@ -117,7 +117,6 @@ FIGHTER_IMAGES = {
 }
 
     # Populate matching strings directly from your script's existing CHARACTER_POOL
-}
 
 STAGE_BACKGROUNDS = {
     "Battlefield": "https://smashbros.com",
