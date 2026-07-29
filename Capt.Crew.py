@@ -1561,13 +1561,18 @@ def run_web_server():
 
 # --- KEEP ALL OF YOUR ORIGINAL BOT EXECUTION CODE ---
 if __name__ == "__main__":
-    # 1. Start the web server on a separate background thread
-    print("🌐 Starting keep-alive web server...")
-    Thread(target=run_web_server).start()
+    # Launch the background thread listener safely
+    print("🌐 Launching Render keep-alive web listener...")
+    Thread(target=run_web_server, daemon=True).start()
 
-    # 2. Run your original Discord Bot startup line
-    print("🚀 Connecting to Discord Gateway...")
-    bot.run(os.environ.get("DISCORD_TOKEN"))
+    # Fire up your regular Discord bot connection loop
+    print("🚀 Connecting bot to Discord Gateway...")
+    token = os.environ.get("DISCORD_TOKEN")
+    if token:
+        bot.run(token)
+    else:
+        print("❌ Error: DISCORD_TOKEN variable not found in Render environment variables.")
+
 
 
 
