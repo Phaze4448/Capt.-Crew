@@ -216,9 +216,7 @@ class SmashBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.db = None
 
-          async def setup_hook(self):
-        client = AsyncIOMotorClient(MONGO_URL)
-        self.db = client["smash_crew_db"]
+
 
 
 
@@ -226,6 +224,13 @@ bot = SmashBot()
 
 @bot.event
 async def on_ready():
+    # PASTE THESE 4 LINES RIGHT HERE (Indented with 4 spaces):
+    from motor.motor_asyncio import AsyncIOMotorClient
+    import os
+    client = AsyncIOMotorClient(os.environ.get("MONGO_URL"))
+    bot.db = client["smash_crew_db"]
+
+    # This is your existing line 227:
     print(f"📡 Logged in as: {bot.user.name}")
     await bot.change_presence(activity=discord.Game(name="SSBU Crew Battles"))
 
