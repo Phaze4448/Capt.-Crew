@@ -17,11 +17,24 @@ BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 async def handle(request): return web.Response(text="Bot is running!")
 app = web.Application()
 app.router.add_get('/', handle)
-async def run_web():
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 10000)))
-    await site.start()
+# =========================================================================
+#                    KEEP-ALIVE WEB SERVER (FLASK)
+# =========================================================================
+import os
+from flask import Flask
+from threading import Thread
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "SmashBot is awake and running!"
+
+def run_web_server():
+    """Starts the native Flask web listener on the port Render requires."""
+    port = int(os.environ.get("PORT", 10000))
+    # CRITICAL FIX: Use app.run() instead of web.AppRunner()
+    app.run(host='0.0.0.0', port=port)
 
 # Preset Assets Dictionary Configuration Maps
 FIGHTER_IMAGES = {
