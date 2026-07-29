@@ -216,10 +216,10 @@ class SmashBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.db = None
 
-       async def setup_hook(self):
-        # 1. Setup MongoDB connection profiles cleanly
-           client = AsyncIOMotorClient(MONGO_URL)
-           self.db = client["smash_crew_db"]
+          async def setup_hook(self):
+        client = AsyncIOMotorClient(MONGO_URL)
+        self.db = client["smash_crew_db"]
+
 
 
 bot = SmashBot()
