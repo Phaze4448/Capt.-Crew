@@ -708,6 +708,7 @@ async def show_card(interaction: discord.Interaction, member: discord.User = Non
 
 
 
+
 # =========================================================================
 #                    THE TOURNAMENT MARKETPLACE MODULE
 # =========================================================================
