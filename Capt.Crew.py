@@ -713,6 +713,187 @@ async def show_card(interaction: discord.Interaction, member: discord.User = Non
 #                    THE TOURNAMENT MARKETPLACE MODULE
 # =========================================================================
 
+import discord
+from discord import app_commands
+from discord.ext import commands
+from discord.ui import Select, View, Button
+
+
+intents = discord.Intents.default()
+intents.members = True
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+ROWS = {
+    "Row 1": ["Mario", "Donkey Kong", "Link", "Samus", "Dark Samus", "Yoshi", "Kirby", "Fox", "Pikachu", "Luigi", "Ness", "Captain Falcon", "Jigglypuff"],
+    "Row 2": ["Peach", "Daisy", "Bowser", "Ice Climbers", "Sheik", "Zelda", "Dr. Mario", "Pichu", "Falco", "Marth", "Lucina", "Young Link", "Ganondorf"],
+    "Row 3": ["Mewtwo", "Roy", "Chrom", "Mr. Game & Watch", "Meta Knight", "Pit", "Dark Pit", "Zero Suit Samus", "Wario", "Snake", "Ike", "Pokemon Trainer", "Diddy Kong"],
+    "Row 4": ["Lucas", "Sonic", "King Dedede", "Olimar", "Lucario", "R.O.B.", "Toon Link", "Wolf", "Villager", "Mega Man", "Wii Fit Trainer", "Rosalina & Luma", "Little Mac"],
+    "Row 5": ["Greninja", "Palutena", "Pac-Man", "Robin", "Shulk", "Bowser Jr.", "Duck Hunt", "Ryu", "Ken", "Cloud", "Corrin", "Bayonetta", "Inkling"],
+    "Row 6": ["Ridley", "Simon", "Richter", "King K. Rool", "Isabelle", "Incineroar", "Piranha Plant", "Joker", "Hero", "Banjo & Kazooie", "Terry", "Byleth", "Min Min"],
+    "Row 7": ["Steve", "Sephiroth", "Pyra/Mythra", "Kazuya", "Sora", "Mii Brawler", "Mii Swordfighter", "Mii Gunner"]
+}
+
+ROSTER = {name: name for row in ROWS.values() for name in row}
+
+ROLE_MAPPING = {
+    "ssbucord_crew": "SSBUCord Crew Member",
+    "scs_crew": "SCS Crew Member",
+    "dscl_crew": "DSCL Crew Member",
+    "ssbucord_sub": "SSBUCord Emergency Sub",
+    "scs_sub": "SCS Emergency Sub",
+    "dscl_sub": "DSCL Emergency Sub"
+}
+
+async def assign_fighter_role(interaction, fighter_input, role_type):
+    matched = None
+    for name in ROSTER:
+        if fighter_input.lower() in name.lower():
+            matched = name
+            break
+    if not matched:
+        await interaction.response.send_message(f"❌ No fighter named '{fighter_input}'.", ephemeral=True)
+        return
+    role_name = f"{role_type}: {matched}"
+    guild, member = interaction.guild, interaction.user
+    role = discord.utils.get(guild.roles, name=role_name)
+    if not role:
+        try:
+            role = await guild.create_role(name=role_name, mentionable=True)
+            await interaction.channel.send(f"🛠️ Created: `{role_name}`")
+        except:
+            await interaction.response.send_message("❌ Missing permissions!", ephemeral=True)
+            return
+    if role in member.roles:
+        await interaction.response.send_message(f"ℹ️ You already have `{role_name}`!", ephemeral=True)
+    else:
+        try:
+            await member.add_roles(role)
+            await interaction.response.send_message(f"✅ Added `{role_name}`!", ephemeral=True)
+        except:
+            await interaction.response.send_message("❌ Move bot role higher!", ephemeral=True)
+
+@bot.tree.command(name="main")
+async def slash_main(interaction: discord.Interaction, fighter_name: str):
+    await assign_fighter_role(interaction, fighter_name, "Main")
+
+@bot.tree.command(name="secondary")
+async def slash_secondary(interaction: discord.Interaction, fighter_name: str):
+    await assign_fighter_role(interaction, fighter_name, "Secondary")
+
+@bot.tree.command(name="removefighter")
+async def slash_remove(interaction: discord.Interaction, fighter_name: str):
+    guild, member = interaction.guild, interaction.user
+    for r_type in ["Main", "Secondary"]:
+        for name in ROSTER:
+            if fighter_name.lower() in name.lower():
+                role = discord.utils.get(guild.roles, name=f"{r_type}: {name}")
+                if role and role in member.roles:
+                    await member.remove_roles(role)
+                    await interaction.response.send_message(f"🗑️ Removed `{role.name}`.", ephemeral=True)
+                    return
+    await interaction.response.send_message("❌ Role not found.", ephemeral=True)
+
+@bot.tree.command(name="smashmenu")
+@app_commands.checks.has_permissions(administrator=True)
+async def slash_menu(interaction: discord.Interaction):
+    embed = discord.Embed(title="🎮 SSBU Crew Matchmaking Dashboard", description="Select a fighter below.", color=0xff4500)
+    embed.set_image(url="https://i.imgur.com/kb35FCI.jpeg")
+    await interaction.response.send_message(embed=embed, view=RosterView(), ephemeral=False)
+
+class RolePingSelect(Select):
+    def __init__(self, all_users, fighter_name):
+        self.all_users = all_users
+        self.fighter_name = fighter_name
+        options = [
+            discord.SelectOption(label="SSBUCord Crew Member", value="ssbucord_crew"),
+            discord.SelectOption(label="SCS Crew Member", value="scs_crew"),
+            discord.SelectOption(label="DSCL Crew Member", value="dscl_crew"),
+            discord.SelectOption(label="SSBUCord Emergency Sub", value="ssbucord_sub"),
+            discord.SelectOption(label="SCS Emergency Sub", value="scs_sub"),
+            discord.SelectOption(label="DSCL Emergency Sub", value="dscl_sub")
+        ]
+        super().__init__(placeholder="📣 Select Crew or Emergency Sub Role to Ping...", options=options, row=1)
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_key = self.values[0]
+        target_role_name = ROLE_MAPPING[selected_key]
+        to_ping = [m.mention for m in self.all_users if any(r.name == target_role_name for r in m.roles)]
+        
+        if to_ping:
+            await interaction.response.send_message(f"🚨 **{target_role_name} Alert!** Match needed against **{self.fighter_name}**:\n" + " ".join(to_ping))
+        else:
+            await interaction.response.send_message(f"ℹ️ No active **{self.fighter_name}** players possess the **{target_role_name}** role.", ephemeral=True)
+
+class PingActionView(View):
+    def __init__(self, mains, secondaries, fighter_name, player_options):
+        super().__init__(timeout=None)
+        self.mains, self.secondaries, self.fighter_name, self.all_users = mains, secondaries, fighter_name, list(set(mains + secondaries))
+        
+        if player_options:
+            sel = Select(placeholder="🎯 Select 1 Specific Player to Ping...", options=player_options[:25], row=0)
+            sel.callback = self.single_ping_callback
+            self.add_item(sel)
+            
+        if len(self.all_users) > 0:
+            self.add_item(RolePingSelect(self.all_users, self.fighter_name))
+            
+        self.btn_everyone.disabled = len(self.all_users) == 0
+
+    async def single_ping_callback(self, interaction):
+        member = interaction.guild.get_member(int(interaction.data['values'][0]))
+        if member: await interaction.response.send_message(f"🔔 {interaction.user.mention} challenged {member.mention} ({self.fighter_name})!")
+
+    @discord.ui.button(label="Ping Everyone who plays character", style=discord.ButtonStyle.danger, row=2)
+    async def btn_everyone(self, interaction, button):
+        await interaction.response.send_message(f"📣 {interaction.user.mention} wants matches against **{self.fighter_name}**!\n" + " ".join([m.mention for m in self.all_users]))
+
+class RosterView(View):
+    def __init__(self, page=1):
+        super().__init__(timeout=None)
+        self.page = page
+        display_rows = list(ROWS.items())[:3] if page == 1 else list(ROWS.items())[3:]
+        btn_row = 3 if page == 1 else 4
+        for label, fighters in display_rows:
+            sel = Select(placeholder=label, options=[discord.SelectOption(label=n, value=n) for n in fighters])
+            sel.callback = self.select_callback
+            self.add_item(sel)
+        if page == 1:
+            btn = Button(label="Next Rows (4-7) ➡️", style=discord.ButtonStyle.secondary, row=btn_row)
+            btn.callback = self.next_page
+        else:
+            btn = Button(label="⬅️ Previous Rows (1-3)", style=discord.ButtonStyle.secondary, row=btn_row)
+            btn.callback = self.prev_page
+        self.add_item(btn)
+
+    async def next_page(self, interaction): await interaction.response.edit_message(view=RosterView(page=2))
+    async def prev_page(self, interaction): await interaction.response.edit_message(view=RosterView(page=1))
+
+    async def select_callback(self, interaction):
+        await interaction.response.defer()
+        name = interaction.data['values'][0]
+        guild = interaction.guild
+        mains = discord.utils.get(guild.roles, name=f"Main: {name}").members if discord.utils.get(guild.roles, name=f"Main: {name}") else []
+        secs = discord.utils.get(guild.roles, name=f"Secondary: {name}").members if discord.utils.get(guild.roles, name=f"Secondary: {name}") else []
+        all_p = list(set(mains + secs))
+        opts = [discord.SelectOption(label=p.display_name, value=str(p.id), description="Main" if p in mains else "Secondary") for p in all_p]
+        text = f"🔲 **Fighter Profile: {name}**\n\n⭐ **Mains:**\n" + ("\n".join([f"• {m.display_name}" for m in mains]) if mains else "• None\n")
+        text += f"\n🥈 **Secondaries:**\n" + ("\n".join([f"• {s.display_name}" for s in secs]) if secs else "• None\n")
+        await interaction.followup.send(content=text, view=PingActionView(mains, secs, name, opts), ephemeral=True)
+
+@bot.command(name="sync")
+@commands.is_owner()
+async def manual_sync(ctx):
+    await bot.tree.sync()
+    await ctx.send("🔄 7-Row layout matrix synced globally!")
+
+@bot.event
+async def on_ready():
+    print(f"✅ Character Roster Bot logged in as {bot.user}")
+
+
+
+
 @bot.tree.command(name="shop", description="Browse cosmetic background stages and color tints for your profile card.")
 async def open_shop(interaction: discord.Interaction):
     """Displays all available card cosmetics and their gold costs."""
