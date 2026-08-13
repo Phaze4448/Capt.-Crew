@@ -1772,6 +1772,26 @@ if __name__ == "__main__":
         bot.run(token)
     else:
         print("❌ Error: DISCORD_TOKEN variable not found in Render environment variables.")
+import asyncio
+import discord
+from discord.errors import HTTPException
+
+async def main():
+    retry_delay = 60  # Start with 1 minute
+    while True:
+        try:
+            print("Attempting to connect to Discord...")
+            await bot.start(token)
+        except HTTPException as e:
+            if e.status == 429:
+                print(f"Rate limited (1015). Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 900)  # Max out backoff at 15 mins
+            else:
+                raise e
+
+# Run the loop
+asyncio.run(main())
 
 
 
