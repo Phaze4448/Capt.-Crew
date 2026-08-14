@@ -215,20 +215,7 @@ class ActiveBattle(BaseModel):
     is_mock: bool = False
     start_time: float = 0.0
 
-class SmashBot(discord.Client):
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.members = True
-        intents.message_content = True
-        super().__init__(intents=intents)
-        self.tree = app_commands.CommandTree(self)
-        self.db = None
 
-
-
-
-
-bot = SmashBot()
 
 @bot.event
 async def on_ready():
