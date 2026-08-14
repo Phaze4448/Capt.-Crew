@@ -9,7 +9,23 @@ import io
 import time
 from PIL import Image, ImageDraw
 from aiohttp import web
-import asyncio
+import asyncioimport requests
+requests.get(
+    "https://ipv4.webshare.io/",
+    proxies={
+        "http": "http://sdxhomrv:2iglhif7xb7o@31.59.20.176:6754/",
+        "https": "http://sdxhomrv:2iglhif7xb7o@31.59.20.176:6754/"
+    }
+).text
+import discord
+from discord.ext import commands
+
+PROXY_URL = "http://username:password@proxy-host:port"
+
+# Pass the proxy to the bot
+bot = commands.Bot(command_prefix="!", proxy=PROXY_URL)
+
+bot.run("YOUR_DISCORD_BOT_TOKEN")
 
 MONGO_URL = os.environ.get("MONGO_URL")
 BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
