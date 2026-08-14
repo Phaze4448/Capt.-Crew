@@ -231,7 +231,7 @@ async def on_ready():
         synced = await bot.tree.sync()
         print(f"⚡ Global Sync Complete: {len(synced)} slash commands registered across all servers!")
     except Exception as e:
-        print(f"❌ Failed to sync commands: {e}"))
+        print(f"❌ Failed to sync commands: {e}")
 
 @bot.event
 async def on_message(message: discord.Message):
