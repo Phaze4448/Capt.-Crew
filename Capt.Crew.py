@@ -720,16 +720,7 @@ async def show_card(interaction: discord.Interaction, member: discord.User = Non
 #                    THE TOURNAMENT MARKETPLACE MODULE
 # =========================================================================
 
-import discord
-from discord import app_commands
-from discord.ext import commands
-from discord.ui import Select, View, Button
 
-
-intents = discord.Intents.default()
-intents.members = True
-intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
 
 ROWS = {
     "Row 1": ["Mario", "Donkey Kong", "Link", "Samus", "Dark Samus", "Yoshi", "Kirby", "Fox", "Pikachu", "Luigi", "Ness", "Captain Falcon", "Jigglypuff"],
