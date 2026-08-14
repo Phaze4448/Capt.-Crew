@@ -854,25 +854,6 @@ async def manual_sync(ctx):
     await bot.tree.sync()
     await ctx.send("🔄 7-Row layout matrix synced globally!")
 
-# 1. Add your testing server's ID at the top of your script
-MY_GUILD_ID = 1494137588250972250  # 👈 Replace with your actual Server ID
-
-# 2. Update your on_ready event at the bottom of your script
-@bot.event
-async def on_ready():
-    print(f"✅ Character Roster Bot logged in as {bot.user}")
-    try:
-        # Syncs commands instantly to your specific server for testing
-        guild = discord.Object(id=MY_GUILD_ID)
-        bot.tree.copy_global_to(guild=guild)
-        synced = await bot.tree.sync(guild=guild)
-        print(f"🔄 Instantly synced {len(synced)} slash commands to server {MY_GUILD_ID}!")
-    except Exception as e:
-        print(f"❌ Failed to sync commands: {e}")
-
-
-
-
 
 @bot.tree.command(name="shop", description="Browse cosmetic background stages and color tints for your profile card.")
 async def open_shop(interaction: discord.Interaction):
