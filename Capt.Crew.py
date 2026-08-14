@@ -11,20 +11,19 @@ from PIL import Image, ImageDraw
 from aiohttp import web
 import asyncio
 import requests
-requests.get(
-    "https://ipv4.webshare.io/",
-    proxies={
-        "http": "http://sdxhomrv:2iglhif7xb7o@31.59.20.176:6754/",
-        "https": "http://sdxhomrv:2iglhif7xb7o@31.59.20.176:6754/"
-    }
-).text
 import discord
 from discord.ext import commands
 
+# 1. Configure Proxy
 PROXY_URL = "http://sdxhomrv:2iglhif7xb7o@31.59.20.176:6754"
 
-# Pass the proxy to the bot
-bot = commands.Bot(command_prefix="!", proxy=PROXY_URL)
+# 2. Define Intents
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+
+# 3. Initialize Bot instance
+bot = commands.Bot(command_prefix="!", intents=intents, proxy=PROXY_URL)
 
 bot.run("YOUR_DISCORD_BOT_TOKEN")
 
