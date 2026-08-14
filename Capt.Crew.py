@@ -1783,7 +1783,3 @@ if __name__ == "__main__":
     else:
         print("❌ Error: DISCORD_TOKEN variable not found in Render Environment Variables.")
 
-
-
-
-bot.run(BOT_TOKEN)
