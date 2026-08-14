@@ -25,10 +25,9 @@ intents.members = True
 # 3. Initialize Bot instance
 bot = commands.Bot(command_prefix="!", intents=intents, proxy=PROXY_URL)
 
-bot.run("YOUR_DISCORD_BOT_TOKEN")
-
+# Keep environment variables for MongoDB and Discord Token
 MONGO_URL = os.environ.get("MONGO_URL")
-BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
+BOT_TOKEN = os.environ.get("DISCORD_TOKEN") or os.environ.get("DISCORD_BOT_TOKEN")
 
 async def handle(request): return web.Response(text="Bot is running!")
 app = web.Application()
@@ -1790,17 +1789,16 @@ def run_web_server():
 
 # --- KEEP ALL OF YOUR ORIGINAL BOT EXECUTION CODE ---
 if __name__ == "__main__":
-    # Launch the background thread listener safely
+    # Start Render keep-alive web server
     print("🌐 Launching Render keep-alive web listener...")
     Thread(target=run_web_server, daemon=True).start()
 
-    # Fire up your regular Discord bot connection loop
+    # Launch bot
     print("🚀 Connecting bot to Discord Gateway...")
-    token = os.environ.get("DISCORD_TOKEN")
-    if token:
-        bot.run(token)
+    if BOT_TOKEN:
+        bot.run(BOT_TOKEN)
     else:
-        print("❌ Error: DISCORD_TOKEN variable not found in Render environment variables.")
+        print("❌ Error: DISCORD_TOKEN variable not found in Render Environment Variables.")
 import asyncio
 import discord
 from discord.errors import HTTPException
