@@ -9,7 +9,8 @@ import io
 import time
 from PIL import Image, ImageDraw
 from aiohttp import web
-import asyncioimport requests
+import asyncio
+import requests
 requests.get(
     "https://ipv4.webshare.io/",
     proxies={
@@ -20,7 +21,7 @@ requests.get(
 import discord
 from discord.ext import commands
 
-PROXY_URL = "http://username:password@proxy-host:port"
+PROXY_URL = "http://sdxhomrv:2iglhif7xb7o@31.59.20.176:6754"
 
 # Pass the proxy to the bot
 bot = commands.Bot(command_prefix="!", proxy=PROXY_URL)
