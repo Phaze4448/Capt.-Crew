@@ -219,38 +219,19 @@ class ActiveBattle(BaseModel):
 
 @bot.event
 async def on_ready():
-    # PASTE THESE 4 LINES RIGHT HERE (Indented with 4 spaces):
-    from motor.motor_asyncio import AsyncIOMotorClient
-    import os
+    # 1. Connect to MongoDB
     client = AsyncIOMotorClient(os.environ.get("MONGO_URL"))
     bot.db = client["smash_crew_db"]
-
-    # This is your existing line 227:
+    
     print(f"📡 Logged in as: {bot.user}")
     await bot.change_presence(activity=discord.Game(name="SSBU Crew Battles"))
 
-    # 1. Put your actual Discord Server (Guild) ID here
-    YOUR_SERVER_ID = 123456789012345678  
-    target_guild = discord.Object(id=YOUR_SERVER_ID)
-    
+    # 2. Sync Slash Commands globally across all joined servers
     try:
-        # 2. Clear out any legacy server-bound command caches
-        bot.tree.clear_commands(guild=target_guild)
-        
-        # 3. Clone every command in your script directly to this server
-        bot.tree.copy_global_to(guild=target_guild)
-        
-        # 4. Fire the synchronization protocol
-        synced = await bot.tree.sync(guild=target_guild)
-        print(f"⚡ Instant Sync: {len(synced)} commands are now live in your server!")
-        
-        # 5. Background global fallback sync (takes 1-2 hours but registers elsewhere)
-        await bot.tree.sync()
-        print("🌐 Global background fallback sync complete.")
-        
+        synced = await bot.tree.sync()
+        print(f"⚡ Global Sync Complete: {len(synced)} slash commands registered across all servers!")
     except Exception as e:
-        print(f"❌ Synchronization failure: {e}")
-
+        print(f"❌ Failed to sync commands: {e}"))
 
 @bot.event
 async def on_message(message: discord.Message):
