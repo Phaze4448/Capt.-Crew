@@ -7,6 +7,7 @@ import requests
 import discord
 from discord import app_commands
 from discord.ext import commands
+from discord.ui import Select, View, Button, Modal, TextInput
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
 from typing import List, Optional
