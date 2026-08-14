@@ -1042,7 +1042,7 @@ class CrewApplicationModal(ui.Modal, title="🛡️ Register Your Tournament Cre
             welcome_embed.add_field(name="Roster Base", value=roster_ping_string if roster_ping_string else "None Listed", inline=False)
             await thread.send(embed=welcome_embed)
 
-            # 8. Force notification hook inside thread layer context to pull them inside
+            # 8.  notification hook inside thread layer context to pull them inside
             if roster_ping_string or staff_ping_string:
                 ping_payload = await thread.send(f"🔔 **Notification Hook:** {roster_ping_string} {staff_ping_string}")
                 await ping_payload.delete(delay=2)
@@ -1115,11 +1115,19 @@ async def start_battle(interaction: discord.Interaction, opponent_crew: str):
 
 
 @bot.tree.command(name="forcesync", description="Admin Only: Instantly purge caches and rebuild application command menus.")
+@app_commands.checks.has_permissions(administrator=True)
 async def forcesync(interaction: discord.Interaction):
-    # CHANGE THIS NUMBER to your actual Discord User ID
-    if interaction.user.id != 503657385419407360:  
-        await interaction.response.send_message("❌ Access Denied.", ephemeral=True)
-        return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        synced = await bot.tree.sync()
+        await interaction.followup.send(f"⚡ **Sync Complete!** Registered `{len(synced)}` slash commands globally across all servers.", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Synchronization failed: `{e}`", ephemeral=True)
+
+@forcesync.error
+async def forcesync_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ **Access Denied:** You must be a Server Administrator to run this command.", ephemeral=True)
 
 
 
