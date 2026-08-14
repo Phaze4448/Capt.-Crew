@@ -29,7 +29,6 @@ bot = commands.Bot(command_prefix="!", intents=intents, proxy=PROXY_URL)
 MONGO_URL = os.environ.get("MONGO_URL")
 BOT_TOKEN = os.environ.get("DISCORD_TOKEN") or os.environ.get("DISCORD_BOT_TOKEN")
 
-
 app = Flask('')
 
 @app.route('/')
@@ -1759,6 +1758,10 @@ from threading import Thread
 #                    KEEP-ALIVE WEB SERVER & BOT LAUNCH
 # =========================================================================
 
+# =========================================================================
+#                    KEEP-ALIVE WEB SERVER & BOT LAUNCH
+# =========================================================================
+
 app = Flask('')
 
 @app.route('/')
@@ -1779,26 +1782,6 @@ if __name__ == "__main__":
         bot.run(BOT_TOKEN)
     else:
         print("❌ Error: DISCORD_TOKEN variable not found in Render Environment Variables.")
-import asyncio
-import discord
-from discord.errors import HTTPException
-
-async def main():
-    retry_delay = 60  # Start with 1 minute
-    while True:
-        try:
-            print("Attempting to connect to Discord...")
-            await bot.start(token)
-        except HTTPException as e:
-            if e.status == 429:
-                print(f"Rate limited (1015). Retrying in {retry_delay} seconds...")
-                await asyncio.sleep(retry_delay)
-                retry_delay = min(retry_delay * 2, 900)  # Max out backoff at 15 mins
-            else:
-                raise e
-
-# Run the loop
-asyncio.run(main())
 
 
 
