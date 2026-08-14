@@ -29,14 +29,6 @@ bot = commands.Bot(command_prefix="!", intents=intents, proxy=PROXY_URL)
 MONGO_URL = os.environ.get("MONGO_URL")
 BOT_TOKEN = os.environ.get("DISCORD_TOKEN") or os.environ.get("DISCORD_BOT_TOKEN")
 
-
-# =========================================================================
-#                    KEEP-ALIVE WEB SERVER (FLASK)
-# =========================================================================
-import os
-from flask import Flask
-from threading import Thread
-
 app = Flask('')
 
 @app.route('/')
@@ -1765,6 +1757,10 @@ async def help_referee(interaction: discord.Interaction):
 
 from flask import Flask
 from threading import Thread
+
+# =========================================================================
+#                    KEEP-ALIVE WEB SERVER & BOT LAUNCH
+# =========================================================================
 
 # =========================================================================
 #                    KEEP-ALIVE WEB SERVER & BOT LAUNCH
