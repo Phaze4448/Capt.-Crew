@@ -29,6 +29,7 @@ bot = commands.Bot(command_prefix="!", intents=intents, proxy=PROXY_URL)
 MONGO_URL = os.environ.get("MONGO_URL")
 BOT_TOKEN = os.environ.get("DISCORD_TOKEN") or os.environ.get("DISCORD_BOT_TOKEN")
 
+
 app = Flask('')
 
 @app.route('/')
@@ -41,11 +42,7 @@ def run_web_server():
     # CRITICAL FIX: Use app.run() instead of web.AppRunner()
     app.run(host='0.0.0.0', port=port)
 
-import discord
-from discord.ext import commands
 
-
-bot = commands.Bot(command_prefix="!", intents=intents, proxy=PROXY_URL)
 
 # Preset Assets Dictionary Configuration Maps
 FIGHTER_IMAGES = {
