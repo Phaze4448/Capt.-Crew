@@ -53,6 +53,19 @@ def run_web_server():
     # CRITICAL FIX: Use app.run() instead of web.AppRunner()
     app.run(host='0.0.0.0', port=port)
 
+import discord
+from discord.ext import commands
+
+# 1. Define your bot's intents
+intents = discord.Intents.default()
+# If your bot reads message content or user inputs, enable message_content:
+intents.message_content = True  
+
+PROXY_URL = "http://sdxhomrv:2iglhif7xb7o@38.154.185.97:6370"
+
+# 2. Pass `intents=intents` to the Bot constructor
+bot = commands.Bot(command_prefix="!", intents=intents, proxy=PROXY_URL)
+
 # Preset Assets Dictionary Configuration Maps
 FIGHTER_IMAGES = {
     # --- BASE ROSTER & SECRETS ---
