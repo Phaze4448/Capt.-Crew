@@ -1,18 +1,18 @@
-import discord
-from discord import app_commands
-from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel
-from typing import List, Optional
 import os
 import random
 import io
 import time
-from PIL import Image, ImageDraw
-from aiohttp import web
 import asyncio
 import requests
 import discord
+from discord import app_commands
 from discord.ext import commands
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel
+from typing import List, Optional
+from PIL import Image, ImageDraw
+from flask import Flask
+from threading import Thread
 
 # 1. Configure Proxy
 PROXY_URL = "http://sdxhomrv:2iglhif7xb7o@31.59.20.176:6754"
@@ -22,16 +22,14 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-# 3. Initialize Bot instance
+# 3. Initialize Bot Instance
 bot = commands.Bot(command_prefix="!", intents=intents, proxy=PROXY_URL)
 
-# Keep environment variables for MongoDB and Discord Token
+# 4. Environment Variables
 MONGO_URL = os.environ.get("MONGO_URL")
 BOT_TOKEN = os.environ.get("DISCORD_TOKEN") or os.environ.get("DISCORD_BOT_TOKEN")
 
-async def handle(request): return web.Response(text="Bot is running!")
-app = web.Application()
-app.router.add_get('/', handle)
+
 # =========================================================================
 #                    KEEP-ALIVE WEB SERVER (FLASK)
 # =========================================================================
@@ -54,14 +52,7 @@ def run_web_server():
 import discord
 from discord.ext import commands
 
-# 1. Define your bot's intents
-intents = discord.Intents.default()
-# If your bot reads message content or user inputs, enable message_content:
-intents.message_content = True  
 
-PROXY_URL = "http://sdxhomrv:2iglhif7xb7o@38.154.185.97:6370"
-
-# 2. Pass `intents=intents` to the Bot constructor
 bot = commands.Bot(command_prefix="!", intents=intents, proxy=PROXY_URL)
 
 # Preset Assets Dictionary Configuration Maps
@@ -1775,25 +1766,25 @@ async def help_referee(interaction: discord.Interaction):
 from flask import Flask
 from threading import Thread
 
-# Create a tiny dummy web application
+# =========================================================================
+#                    KEEP-ALIVE WEB SERVER & BOT LAUNCH
+# =========================================================================
+
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "SmashBot is online and running!"
+    return "SmashBot is awake and running!"
 
 def run_web_server():
-    # This automatically reads Render's required port number dynamically
+    """Starts the native Flask web listener on the port Render requires."""
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-# --- KEEP ALL OF YOUR ORIGINAL BOT EXECUTION CODE ---
 if __name__ == "__main__":
-    # Start Render keep-alive web server
     print("🌐 Launching Render keep-alive web listener...")
     Thread(target=run_web_server, daemon=True).start()
 
-    # Launch bot
     print("🚀 Connecting bot to Discord Gateway...")
     if BOT_TOKEN:
         bot.run(BOT_TOKEN)
