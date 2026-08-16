@@ -222,16 +222,11 @@ async def on_ready():
     # 1. Connect to MongoDB
     client = AsyncIOMotorClient(os.environ.get("MONGO_URL"))
     bot.db = client["smash_crew_db"]
-    
     print(f"📡 Logged in as: {bot.user}")
     await bot.change_presence(activity=discord.Game(name="SSBU Crew Battles"))
+    
+    # REMOVE THE AUTOMATIC bot.tree.sync() FROM HERE
 
-    # 2. Sync Slash Commands globally across all joined servers
-    try:
-        synced = await bot.tree.sync()
-        print(f"⚡ Global Sync Complete: {len(synced)} slash commands registered across all servers!")
-    except Exception as e:
-        print(f"❌ Failed to sync commands: {e}")
 
 @bot.event
 async def on_message(message: discord.Message):
